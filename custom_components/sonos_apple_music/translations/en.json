@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Apple Music for Sonos",
+        "description": "Catalog search and playback work straight away. To browse your own library and playlists, paste the `media-user-token` cookie from a signed-in music.apple.com session (browser devtools → Application → Cookies). Leave it empty to skip.",
+        "data": {
+          "music_user_token": "Music user token (optional)",
+          "storefront": "Storefront"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Apple Music for Sonos",
+        "description": "Apple has rejected the stored music user token, so your library, recently played and recommendations are unavailable. Paste a fresh `media-user-token` cookie from a signed-in music.apple.com session (browser devtools → Application → Cookies). Leave it empty to drop library access and keep catalog search, charts, radio and playback.",
+        "data": {
+          "music_user_token": "Music user token"
+        }
+      }
+    },
+    "error": {
+      "no_developer_token": "Could not read a developer token from the Apple Music web player. Apple may have changed it; check the logs.",
+      "invalid_user_token": "Apple rejected that music user token. Copy the `media-user-token` cookie value again from a signed-in session.",
+      "cannot_connect": "Could not reach Apple Music to check the token. Try again once the connection is back."
+    },
+    "abort": {
+      "single_instance_allowed": "Apple Music for Sonos is already configured.",
+      "reauth_successful": "Apple Music for Sonos is set up again."
+    }
+  },
+  "issues": {
+    "no_apple_music_favorite": {
+      "title": "No Apple Music favorite in the Sonos app",
+      "description": "Playback URIs carry the household's Apple Music account serial, and Sonos only exposes it in URIs its own app has already written. With no Apple Music favorite to read it from, the serial is a guess: items may be added to the queue and then never play, with no error.\n\nTo fix this, open the Sonos app and add any Apple Music item — a song, album or playlist — to Sonos Favorites, then play something from here again."
+    }
+  }
+}

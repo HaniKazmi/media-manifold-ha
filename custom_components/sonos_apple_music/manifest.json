@@ -1,0 +1,20 @@
+{
+  "domain": "sonos_apple_music",
+  "name": "Apple Music for Sonos, Jellyfin for Apple TV",
+  "after_dependencies": [
+    "apple_tv",
+    "jellyfin",
+    "sonos"
+  ],
+  "codeowners": [
+    "@HaniKazmi"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/HaniKazmi/sonos_applemusic",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/HaniKazmi/sonos_applemusic/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "1.0.0"
+}

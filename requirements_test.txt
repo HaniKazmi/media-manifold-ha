@@ -1,0 +1,43 @@
+# Pinned deliberately. This package pulls in Home Assistant itself, so leaving
+# it floating means every CI run silently tests a different HA — and a release
+# can break the build with no change of ours. It also needs Python >= 3.14; on
+# 3.13 pip quietly resolves back to a much older release instead of failing.
+#
+# The `latest` job in tests.yml installs this unpinned on a schedule, so
+# upstream breakage still surfaces on our timetable rather than mid-PR.
+pytest-homeassistant-custom-component==0.13.355
+
+# The Sonos integration's own requirements, plus those of the `ssdp` component
+# it depends on — importing homeassistant.components.sonos pulls the whole chain
+# and fails without them. Versions match what Home Assistant pins, because the
+# DIDL assertions are only meaningful against the soco a speaker actually
+# receives bytes from; a different version can change those bytes with no change
+# of ours.
+soco==0.31.1
+sonos-websocket==0.2.0
+defusedxml==0.7.1
+async-upnp-client==0.47.1
+ifaddr==0.2.0
+
+# Not our dependencies: sonos/media_player.py imports the spotify and plex
+# integrations at module scope, so importing it — which the patch tests must do
+# — needs their requirements present too.
+spotifyaio==2.0.2
+PlexAPI==4.15.16
+plexauth==0.0.6
+plexwebsocket==0.0.14
+
+# The Apple TV integration's own requirement. The patch tests import
+# homeassistant.components.apple_tv.media_player to wrap the real method, and
+# that module imports pyatv at module scope. Version matches what Home Assistant
+# pins, so the seam under test is the one a running install actually has. Unlike
+# the Sonos chain above, nothing else comes with it.
+pyatv==0.18.0
+
+# Used by the pytest --cov flags. Deliberately unpinned: the harness above pins
+# it to an exact version, so pinning a different one here is unsatisfiable.
+pytest-cov
+
+# Pinned so `ruff check` means the same thing run to run; its default rule set
+# moves between releases.
+ruff==0.16.3

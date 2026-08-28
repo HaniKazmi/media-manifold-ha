@@ -1,0 +1,99 @@
+"""Sources grafted onto media players that already exist.
+
+Two grafts, each onto an integration Home Assistant ships: Apple Music into the
+Sonos media browser, and Jellyfin onto the Apple TV by way of Infuse. Neither
+adds an entity. Both wrap the seams of the integration they extend, so the
+players a household already has gain a source rather than a duplicate that has
+to be kept in step with the real one.
+
+The two are independent: a household with only one of the players sets up
+normally, and a graft that cannot install leaves its integration untouched.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+
+from .applemusic import patch as applemusic
+from .applemusic.api import AppleMusicClient, UserTokenInvalid
+from .applemusic.const import CONF_STOREFRONT, CONF_USER_TOKEN, DEFAULT_STOREFRONT
+from .applemusic.dev_token import DeveloperToken, TokenError
+from .const import DOMAIN
+from .infuse import patch as infuse
+
+_LOGGER = logging.getLogger(__name__)
+
+# Every graft is a module exposing NAME, async_install(hass) -> bool and
+# async_remove(). Adding one is adding it here; nothing below counts them.
+GRAFTS = (applemusic, infuse)
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up the client and graft Apple Music onto Sonos."""
+    developer_token = DeveloperToken(hass)
+    try:
+        await developer_token.async_get()
+    except TokenError as err:
+        # Apple has changed the web player. Retrying on a timer will not help
+        # until the scrape is fixed, but ConfigEntryNotReady keeps the entry
+        # alive so a later HA restart picks up a fixed version.
+        raise ConfigEntryNotReady(f"No Apple Music developer token: {err}") from err
+
+    client = AppleMusicClient(
+        hass,
+        developer_token,
+        user_token=entry.data.get(CONF_USER_TOKEN),
+        storefront=entry.data.get(CONF_STOREFRONT, DEFAULT_STOREFRONT),
+        on_token_invalid=lambda: entry.async_start_reauth(hass),
+    )
+    try:
+        await client.async_resolve_storefront()
+    except UserTokenInvalid as err:
+        # The library surfaces would render and then fail one by one. Failing the
+        # entry instead puts the cookie back in front of the user, which is the
+        # only thing that fixes it.
+        raise ConfigEntryAuthFailed(str(err)) from err
+
+    hass.data[DOMAIN] = client
+
+    # Each graft is onto an integration that need not exist. Registering the
+    # removal before the check matters: Home Assistant runs these callbacks on
+    # the setup-failure path too, so nothing stays patched behind a raise.
+    grafted = {}
+    for graft in GRAFTS:
+        grafted[graft.NAME] = graft.async_install(hass)
+        entry.async_on_unload(graft.async_remove)
+
+    # Only a household with none of the players has nothing to set up, and that
+    # is usually one that has not finished starting, so it retries. A graft that
+    # declines while another takes is not retried: adding Sonos to a household
+    # that had only an Apple TV needs a reload of this entry, or a restart.
+    if not any(grafted.values()):
+        hass.data.pop(DOMAIN, None)
+        raise ConfigEntryNotReady(
+            f"None of {', '.join(grafted)} is ready; the grafts will install "
+            f"once one of them is"
+        )
+
+    entry.async_on_unload(entry.add_update_listener(_async_reload))
+    _LOGGER.info(
+        "Grafted onto %s; Apple Music storefront %s, library %s",
+        ", ".join(f"{name} {'yes' if ok else 'no'}" for name, ok in grafted.items()),
+        client.storefront,
+        "on" if client.has_user_token else "off",
+    )
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Drop the client; the grafts come off through their unload callbacks."""
+    hass.data.pop(DOMAIN, None)
+    return True
+
+
+async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
