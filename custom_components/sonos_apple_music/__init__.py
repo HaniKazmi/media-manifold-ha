@@ -8,6 +8,10 @@ to be kept in step with the real one.
 
 The two are independent: a household with only one of the players sets up
 normally, and a graft that cannot install leaves its integration untouched.
+
+One thing here is not a graft. Scrobbling Apple TV playback to SIMKL only reads
+states Home Assistant already publishes, so it patches nothing and hangs off the
+entry directly, and it runs only for a household that has linked SIMKL.
 """
 
 from __future__ import annotations
@@ -24,6 +28,8 @@ from .applemusic.const import CONF_STOREFRONT, CONF_USER_TOKEN, DEFAULT_STOREFRO
 from .applemusic.dev_token import DeveloperToken, TokenError
 from .const import DOMAIN
 from .infuse import patch as infuse
+from .simkl import watch as simkl
+from .simkl.const import CONF_SIMKL_TOKEN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,12 +85,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"once one of them is"
         )
 
+    entry.async_on_unload(simkl.async_start(hass, entry))
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     _LOGGER.info(
-        "Grafted onto %s; Apple Music storefront %s, library %s",
+        "Grafted onto %s; Apple Music storefront %s, library %s, SIMKL %s",
         ", ".join(f"{name} {'yes' if ok else 'no'}" for name, ok in grafted.items()),
         client.storefront,
         "on" if client.has_user_token else "off",
+        "on" if entry.data.get(CONF_SIMKL_TOKEN) else "off",
     )
     return True
 

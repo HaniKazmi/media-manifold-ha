@@ -6,6 +6,10 @@ on an Apple TV by way of Infuse. Both wrap core integrations rather than forking
 them, and neither adds an entity — the players a household already has gain a
 source, rather than a duplicate that has to be kept in step with the real one.
 
+A third thing rides along and grafts onto nothing: playback in the Apple TV's
+own app can be scrobbled to [SIMKL](https://simkl.com), which needs no seam at
+all because Home Assistant already publishes every state the television reaches.
+
 Either graft works without the other: a household with only one of those players
 sets up normally, and a graft that cannot install leaves its integration
 untouched. They do share one config entry, though, so an Apple Music failure
@@ -30,6 +34,12 @@ it to browse your own library, playlists, recently played and recommendations.
 The cookie expires. When Apple rejects it, the entry raises a reauth prompt
 asking for a fresh one; leaving that field empty is a valid answer, and drops
 library access while keeping everything the catalog covers.
+
+Setup then offers to link SIMKL. Choosing to shows a five-character code to
+enter at <https://simkl.com/pin> on any device; press Submit once it is
+approved. Skipping is a complete answer and leaves everything else working.
+Either way it can be changed later with *Reconfigure* on the entry, which is
+also how scrobbling is turned off again.
 
 **One requirement that is easy to miss:** at least one Apple Music favorite must
 exist in the Sonos app. See [The account serial](#the-account-serial-sn).
@@ -102,7 +112,7 @@ once a favorite exists and something is played.
 
 ## Credentials
 
-Two, and only the first is required:
+Three, and only the first is required:
 
 - **Developer token** — scraped from the Apple Music web player's JS bundle,
   which carries three ES256 JWTs. Only the one issued by `AMPWebPlay` is
@@ -127,6 +137,20 @@ Two, and only the first is required:
   token wherever it happens and the entry starts a reauth flow. Setup checks it
   too, and fails the entry rather than rendering library surfaces that error one
   by one when opened.
+
+- **SIMKL access token** — obtained through SIMKL's PIN device flow during
+  setup, and used only for scrobbling. Optional in the strongest sense: without
+  it nothing subscribes to anything.
+
+  The flow needs no client secret and no redirect URI, so the client id ships
+  with the integration the way every scrobbler app's does, and a self-hosted
+  Home Assistant has nothing to register.
+
+  The token lasts five years. When SIMKL rejects one anyway, this raises a
+  repair issue pointing at *Reconfigure* rather than putting the whole entry
+  into reauth: the reauth flow asks for the Apple Music cookie, and sending
+  someone there to fix scrobbling would make the common path stranger to serve
+  the rare one.
 
 ## The browse tree
 
@@ -184,6 +208,74 @@ flow back.
 Music from the same tree is left alone. RAOP already plays Jellyfin audio, and
 Infuse is a video player: handed a track it would open on nothing.
 
+## Scrobbling to SIMKL
+
+Only the Apple TV's own app is scrobbled. Infuse playback is deliberately left
+alone: a Jellyfin webhook already reports it, and a second reporter would race
+that one for the same episode.
+
+What makes the two separable is the same thing that makes the app's playback
+readable at all. The native app reports an eleven-character `media_content_id`
+and Infuse reports none, so requiring one is both the gate and the source of the
+numbering:
+
+```
+A 00544 01 004     ->  Black Bird, season 1, episode 4
+│ │     │  └── episode, three digits
+│ │     └───── season, two digits
+│ └─────────── a per-show prefix, stable across sessions
+└───────────── literal A
+```
+
+pyatv populates none of `media_series_title`, `media_season` or `media_episode`
+for this app, so that id is the only place the numbering exists. The show's name
+comes from `media_title`. Apple Music on the same television shares the
+`com.apple.TV` prefix and also reports no content id, so it is excluded by the
+same rule.
+
+Three transitions are reported, and one state change can produce two of them:
+playing on into the next episode ends one and begins another, and a `start`
+alone would leave the finished episode short of the 80% that marks it watched.
+
+| Transition | Sent | Progress from |
+|---|---|---|
+| into `playing`, or onto a different episode | `start` | the new state |
+| `playing` → `paused`, same episode | `pause` | the new state |
+| a playing or paused episode replaced or left | `stop` | the state it had |
+
+Progress is `media_position` plus the seconds since `media_position_updated_at`
+while playing, over `media_duration`. Those two position attributes are in
+`MediaPlayerEntity._entity_component_unrecorded_attributes`, so they are live
+only and never reach the database — history is no help in reasoning about them.
+Without a duration the progress is unknown rather than zero, and the `pause` or
+`stop` is dropped: both write the number they carry into SIMKL's saved position,
+so reporting zero would replace a real resume point with a place nobody watched
+to.
+
+### Naming the show to SIMKL
+
+A scrobble needs an id, or a title **and** a year. The television reports a
+title and no year, so the id is looked up — once per show, then remembered:
+
+| `show` payload | Result |
+|---|---|
+| `{"title": "Black Bird"}` | 404 `id_err` |
+| `{"title": "Black Bird", "year": 2022}` | 201 |
+| `{"ids": {"simkl": 1624792}}` | 201 |
+| `{"ids": {"simkl_id": 1624792}}` | 201, body `{"id": 0}` |
+
+The last row is why a status code is not read as success here. `GET /search/tv`
+*returns* the id under the key `simkl_id` and the scrobble endpoints expect
+`simkl`; handing the one straight to the other is answered 201 with no show, and
+nothing is recorded. Only the body tells them apart, so a scrobble counts as
+having landed only when SIMKL echoes a non-zero `id`.
+
+Requests are serialised behind a lock, because SIMKL holds a 20-second lock per
+user and answers overlapping calls with 429. A 429 is dropped rather than
+retried — by the time a retry landed it would describe a moment that has passed
+— and a 409 on a `stop` means SIMKL already recorded that episode within the
+hour, which is success.
+
 ## Where it patches
 
 | Integration | Concern | Seam |
@@ -191,6 +283,12 @@ Infuse is a video player: handed a track it would open on nothing.
 | `sonos` | Browse | `sonos.media_browser.async_browse_media`, on the module |
 | `sonos` | Play, search | `SonosMediaPlayerEntity.async_play_media` / `.async_search_media`, on the class |
 | `apple_tv` | Play | `AppleTvMediaPlayer.async_play_media`, on the class |
+
+Scrobbling appears in no row of that table. It only reads states Home Assistant
+already publishes, so it subscribes rather than patching, and it finds its
+players through the entity registry rather than through the loaded `apple_tv`
+entries — which lets the two integrations start in either order, and an Apple TV
+added later be picked up without a restart.
 
 The entity looks the browse function up as a module attribute on every call, and
 `root_payload` recurses through the same global, so one module-level patch covers

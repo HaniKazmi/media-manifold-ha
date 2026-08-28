@@ -6,7 +6,7 @@ import pathlib
 import subprocess
 import sys
 import textwrap
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from homeassistant.components.apple_tv.media_player import AppleTvMediaPlayer
 from homeassistant.components.sonos import media_browser
@@ -19,6 +19,7 @@ from custom_components.sonos_apple_music.const import DOMAIN
 
 SONOS_GRAFT = "custom_components.sonos_apple_music.applemusic.patch.async_install"
 INFUSE_GRAFT = "custom_components.sonos_apple_music.infuse.patch.async_install"
+SIMKL_WATCH = "custom_components.sonos_apple_music.simkl.watch.async_start"
 
 
 async def setup(hass, config_entry) -> None:
@@ -183,3 +184,34 @@ def test_the_package_imports_without_what_it_grafts_onto(absent: str) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+async def test_the_scrobbler_is_started_and_stopped_with_the_entry(
+    hass, config_entry, resolved_storefront
+) -> None:
+    """It hangs off the entry, not the grafts, so nothing else takes it down."""
+    stop = Mock()
+    with patch(SIMKL_WATCH, return_value=stop) as start:
+        await setup(hass, config_entry)
+        assert start.call_count == 1
+        stop.assert_not_called()
+
+        await hass.config_entries.async_unload(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    stop.assert_called_once()
+
+
+async def test_the_scrobbler_is_not_started_when_no_graft_takes(
+    hass, config_entry, resolved_storefront
+) -> None:
+    """The entry retries, and a scrobbler left watching would outlive the attempt."""
+    with (
+        patch(SONOS_GRAFT, return_value=False),
+        patch(INFUSE_GRAFT, return_value=False),
+        patch(SIMKL_WATCH) as start,
+    ):
+        await setup(hass, config_entry)
+
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+    start.assert_not_called()

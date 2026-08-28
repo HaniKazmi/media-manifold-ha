@@ -15,19 +15,37 @@
         "data": {
           "music_user_token": "Music user token"
         }
+      },
+      "simkl_link": {
+        "title": "Scrobble the Apple TV to SIMKL",
+        "description": "Playback in the Apple TV app can be reported to SIMKL, so episodes you watch there are marked watched. This needs a SIMKL account and nothing else; skip it to leave Apple Music and Infuse exactly as they are.",
+        "menu_options": {
+          "simkl_pin": "Link SIMKL",
+          "simkl_skip": "Skip scrobbling"
+        }
+      },
+      "simkl_pin": {
+        "title": "Approve the code at SIMKL",
+        "description": "Open {url} on any device, sign in to SIMKL and enter this code:\n\n## {code}\n\nThen come back here and press Submit."
       }
     },
     "error": {
       "no_developer_token": "Could not read a developer token from the Apple Music web player. Apple may have changed it; check the logs.",
       "invalid_user_token": "Apple rejected that music user token. Copy the `media-user-token` cookie value again from a signed-in session.",
-      "cannot_connect": "Could not reach Apple Music to check the token. Try again once the connection is back."
+      "cannot_connect": "Could not reach Apple Music to check the token. Try again once the connection is back.",
+      "authorization_pending": "SIMKL has not seen that code approved yet. Enter it at simkl.com/pin, then press Submit again."
     },
     "abort": {
       "single_instance_allowed": "Apple Music for Sonos is already configured.",
-      "reauth_successful": "Apple Music for Sonos is set up again."
+      "reauth_successful": "Apple Music for Sonos is set up again.",
+      "reconfigure_successful": "SIMKL scrobbling has been updated."
     }
   },
   "issues": {
+    "simkl_token_rejected": {
+      "title": "SIMKL has rejected the stored token",
+      "description": "Apple TV playback is not being scrobbled, and every other part of the integration is unaffected.\n\nTo fix this, reconfigure the integration from Settings → Devices & Services and link SIMKL again."
+    },
     "no_apple_music_favorite": {
       "title": "No Apple Music favorite in the Sonos app",
       "description": "Playback URIs carry the household's Apple Music account serial, and Sonos only exposes it in URIs its own app has already written. With no Apple Music favorite to read it from, the serial is a guess: items may be added to the queue and then never play, with no error.\n\nTo fix this, open the Sonos app and add any Apple Music item — a song, album or playlist — to Sonos Favorites, then play something from here again."
