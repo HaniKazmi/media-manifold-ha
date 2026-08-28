@@ -4,43 +4,31 @@ The requests here are checked against the shapes SIMKL was measured to accept,
 and the one it accepts while recording nothing. A status code alone would pass
 whether or not anything reached the account, which is exactly the failure these
 tests exist to catch.
+
+Nothing here asserts on Home Assistant state: this client reports what SIMKL
+said and the scrobbler decides what to do about it, so the repair issue is
+tested in test_simkl_watch.py.
 """
 
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 
-from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMockResponse,
 )
 
-from custom_components.sonos_apple_music.const import DOMAIN
-from custom_components.sonos_apple_music.simkl.api import TOKEN_ISSUE, SimklClient
+from custom_components.sonos_apple_music.simkl.api import Result, SimklClient
 from custom_components.sonos_apple_music.simkl.playing import Episode, Event
 
-SEARCH = "https://api.simkl.com/search/tv"
-SHOW_ID = 1624792
+from .conftest import SHOW_ID, SIMKL_SEARCH, scrobble_url, sent, simkl_finds
+
 EPISODE = Episode("Black Bird", 1, 4)
-
-
-def url(act: str) -> str:
-    return f"https://api.simkl.com/scrobble/{act}"
 
 
 def scrobble(act: str = "stop", progress: float | None = 100.0) -> Event:
     return Event(act, EPISODE, progress)
-
-
-def found(aioclient_mock, show_id: int | None = SHOW_ID) -> None:
-    """Answer the search the way SIMKL does — with `simkl_id`, not `simkl`."""
-    ids = {"simkl_id": show_id} if show_id is not None else {}
-    aioclient_mock.get(SEARCH, json=[{"title": "Black Bird", "ids": ids}])
-
-
-def sent(aioclient_mock, method: str) -> list:
-    """The requests of one method that reached SIMKL, in order."""
-    return [call for call in aioclient_mock.mock_calls if call[0].lower() == method]
 
 
 async def test_the_write_key_is_simkl_not_the_one_the_search_answers_with(
@@ -51,11 +39,12 @@ async def test_the_write_key_is_simkl_not_the_one_the_search_answers_with(
     The two endpoints spell the same id differently, so the conversion is the
     single most breakable line in this module.
     """
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), json={"id": SHOW_ID})
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), json={"id": SHOW_ID})
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
 
+    assert result is Result.RECORDED
     _, _, body, headers = aioclient_mock.mock_calls[-1]
     assert body["show"]["ids"] == {"simkl": SHOW_ID}
     assert body["episode"] == {"season": 1, "number": 4}
@@ -67,8 +56,8 @@ async def test_a_start_without_a_measurable_progress_omits_it(
     hass, aioclient_mock
 ) -> None:
     """Sending zero would claim the viewer is at the beginning of the episode."""
-    found(aioclient_mock)
-    aioclient_mock.post(url("start"), json={"id": SHOW_ID})
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("start"), json={"id": SHOW_ID})
 
     await SimklClient(hass, "token").async_scrobble(scrobble("start", None))
 
@@ -79,27 +68,29 @@ async def test_a_recorded_nothing_is_reported_rather_than_passed_as_success(
     hass, aioclient_mock, caplog
 ) -> None:
     """SIMKL answers an ids object it does not recognise with 201 and no show."""
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), json={"id": 0}, status=201)
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), json={"id": 0}, status=201)
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
 
+    assert result is Result.DECLINED
     assert "recorded nothing" in caplog.text
 
 
 async def test_a_show_simkl_cannot_name_is_not_scrobbled(hass, aioclient_mock) -> None:
     """With no id and no year there is nothing to send that would resolve."""
-    aioclient_mock.get(SEARCH, json=[])
+    aioclient_mock.get(SIMKL_SEARCH, json=[])
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
 
+    assert result is Result.DECLINED
     assert not sent(aioclient_mock, "post")
 
 
 async def test_a_first_hit_carrying_no_id_is_not_scrobbled(
     hass, aioclient_mock
 ) -> None:
-    found(aioclient_mock, show_id=None)
+    simkl_finds(aioclient_mock, show_id=None)
 
     await SimklClient(hass, "token").async_scrobble(scrobble())
 
@@ -110,86 +101,117 @@ async def test_a_show_is_searched_once_however_many_episodes_follow(
     hass, aioclient_mock
 ) -> None:
     """A household rewatches a handful of shows; three searches an episode is waste."""
-    found(aioclient_mock)
+    simkl_finds(aioclient_mock)
     for act in ("start", "pause", "stop"):
-        aioclient_mock.post(url(act), json={"id": SHOW_ID})
+        aioclient_mock.post(scrobble_url(act), json={"id": SHOW_ID})
 
     client = SimklClient(hass, "token")
     for act in ("start", "pause", "stop"):
         await client.async_scrobble(scrobble(act))
 
-    searches = sent(aioclient_mock, "get")
-    assert len(searches) == 1
+    assert len(sent(aioclient_mock, "get")) == 1
 
 
-async def test_a_search_miss_is_not_remembered(hass, aioclient_mock) -> None:
-    """SIMKL matches new shows as its catalogue fills, and this one may be next."""
-    aioclient_mock.get(SEARCH, json=[])
+async def test_a_show_simkl_cannot_name_is_not_re_searched_every_transition(
+    hass, aioclient_mock
+) -> None:
+    """Otherwise an unmatched show costs three round trips an episode, forever."""
+    aioclient_mock.get(SIMKL_SEARCH, json=[])
+
+    client = SimklClient(hass, "token")
+    for act in ("start", "pause", "stop"):
+        await client.async_scrobble(scrobble(act))
+
+    assert len(sent(aioclient_mock, "get")) == 1
+
+
+async def test_a_miss_is_forgotten_in_time_to_matter(
+    hass, aioclient_mock, freezer
+) -> None:
+    """SIMKL matches new shows as its catalogue fills, so it is asked again."""
+    aioclient_mock.get(SIMKL_SEARCH, json=[])
+    client = SimklClient(hass, "token")
+    await client.async_scrobble(scrobble())
+
+    freezer.tick(timedelta(hours=2))
+    await client.async_scrobble(scrobble())
+
+    assert len(sent(aioclient_mock, "get")) == 2
+
+
+async def test_a_search_that_cannot_be_reached_is_not_a_remembered_miss(
+    hass, aioclient_mock
+) -> None:
+    """An unreachable SIMKL is not an answer about the show, so it is asked again."""
+    aioclient_mock.get(SIMKL_SEARCH, exc=TimeoutError())
 
     client = SimklClient(hass, "token")
     await client.async_scrobble(scrobble())
     await client.async_scrobble(scrobble())
 
     assert len(sent(aioclient_mock, "get")) == 2
+    assert not sent(aioclient_mock, "post")
 
 
 async def test_an_episode_simkl_already_has_is_not_an_error(
     hass, aioclient_mock, caplog
 ) -> None:
     """409 means the scrobble arrived, an hour ago; there is nothing to fix."""
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), status=409)
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), status=409)
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
 
-    assert "recorded nothing" not in caplog.text
+    assert result is Result.DECLINED
     assert "WARNING" not in caplog.text
 
 
 async def test_being_rate_limited_drops_the_scrobble(hass, aioclient_mock) -> None:
     """A retry would describe a moment that has already passed."""
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), status=429)
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), status=429)
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
 
+    assert result is Result.DECLINED
     assert len(sent(aioclient_mock, "post")) == 1
 
 
-async def test_a_rejected_token_raises_a_repair(hass, aioclient_mock) -> None:
-    """Nothing else in the entry is broken, so nothing else is interrupted."""
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), status=401)
-
-    await SimklClient(hass, "token").async_scrobble(scrobble())
-
-    assert ir.async_get(hass).async_get_issue(DOMAIN, TOKEN_ISSUE) is not None
-
-
-async def test_a_scrobble_that_lands_clears_the_repair(hass, aioclient_mock) -> None:
-    """A token replaced by hand must not leave the warning standing."""
-    ir.async_create_issue(
-        hass,
-        DOMAIN,
-        TOKEN_ISSUE,
-        is_fixable=False,
-        severity=ir.IssueSeverity.WARNING,
-        translation_key=TOKEN_ISSUE,
+async def test_a_show_simkl_cannot_match_is_reported_and_survived(
+    hass, aioclient_mock, caplog
+) -> None:
+    """404 id_err is what a scrobble carrying no usable id is answered with."""
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(
+        scrobble_url("stop"), status=404, json={"error": "id_err", "code": 404}
     )
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), json={"id": SHOW_ID})
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
 
-    assert ir.async_get(hass).async_get_issue(DOMAIN, TOKEN_ISSUE) is None
+    assert result is Result.DECLINED
+    assert "WARNING" not in caplog.text
+
+
+async def test_a_rejected_token_is_told_apart_from_other_refusals(
+    hass, aioclient_mock
+) -> None:
+    """It is the one failure a household can fix, so the caller must know it."""
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), status=401)
+
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
+
+    assert result is Result.TOKEN_REJECTED
 
 
 async def test_simkl_being_unreachable_is_survivable(hass, aioclient_mock) -> None:
     """A scrobble is a report about television; it may not break anything."""
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), exc=TimeoutError())
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), exc=TimeoutError())
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
+
+    assert result is Result.DECLINED
 
 
 async def test_scrobbles_are_sent_one_at_a_time(hass, aioclient_mock) -> None:
@@ -204,8 +226,8 @@ async def test_scrobbles_are_sent_one_at_a_time(hass, aioclient_mock) -> None:
         await gate.wait()
         return AiohttpClientMockResponse(method, url_, json={"id": SHOW_ID})
 
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), side_effect=hold)
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), side_effect=hold)
 
     client = SimklClient(hass, "token")
     both = asyncio.gather(
@@ -223,25 +245,18 @@ async def test_scrobbles_are_sent_one_at_a_time(hass, aioclient_mock) -> None:
     assert len(started) == 2
 
 
-async def test_a_show_simkl_cannot_match_is_reported_and_survived(
-    hass, aioclient_mock, caplog
-) -> None:
-    """404 id_err is what a scrobble carrying no usable id is answered with."""
-    found(aioclient_mock)
-    aioclient_mock.post(url("stop"), status=404, json={"error": "id_err", "code": 404})
-
-    await SimklClient(hass, "token").async_scrobble(scrobble())
-
-    assert "WARNING" not in caplog.text
-    assert len(sent(aioclient_mock, "post")) == 1
-
-
-async def test_a_search_that_cannot_be_reached_scrobbles_nothing(
+async def test_an_episode_boundary_asks_about_the_show_once(
     hass, aioclient_mock
 ) -> None:
-    """Guessing an id would attach the episode to whatever that id happens to be."""
-    aioclient_mock.get(SEARCH, exc=TimeoutError())
+    """A stop and a start of one show are raised together, and share one answer."""
+    simkl_finds(aioclient_mock)
+    for act in ("start", "stop"):
+        aioclient_mock.post(scrobble_url(act), json={"id": SHOW_ID})
 
-    await SimklClient(hass, "token").async_scrobble(scrobble())
+    client = SimklClient(hass, "token")
+    await asyncio.gather(
+        client.async_scrobble(scrobble("stop")),
+        client.async_scrobble(scrobble("start")),
+    )
 
-    assert not sent(aioclient_mock, "post")
+    assert len(sent(aioclient_mock, "get")) == 1

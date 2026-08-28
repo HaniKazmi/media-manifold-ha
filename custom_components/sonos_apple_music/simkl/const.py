@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from ..const import DOMAIN
+
 CONF_SIMKL_TOKEN: Final = "simkl_token"
 
 API_BASE: Final = "https://api.simkl.com"
@@ -27,10 +29,17 @@ PIN_URL: Final = "https://simkl.com/pin"
 
 # Fired when an episode reaches SIMKL's history, carrying the show, its
 # numbering, the progress it finished at and the player it was watched on.
-EVENT_WATCHED: Final = "sonos_apple_music_watched"
+# Built from the domain so a rename cannot leave the two out of step.
+EVENT_WATCHED: Final = f"{DOMAIN}_watched"
+
+# Raised when SIMKL stops accepting the stored token. Named here because the
+# translation in strings.json is keyed on it.
+TOKEN_ISSUE: Final = "simkl_token_rejected"
 
 # SIMKL's own published rule: a `stop` at or above this marks the episode
 # watched, and below it saves a resumable playback instead. The rule is applied
-# on their side, so nothing in the scrobble path consults this — it exists only
-# so the event above can be fired for the same episodes SIMKL counts.
+# on their side, so nothing in the scrobble path consults this. It is mirrored
+# here only so `watch.marks_watched` can announce the same episodes SIMKL
+# counts — a mirror with nothing keeping it in step, which is the price of the
+# scrobble response not saying which of the two it did.
 WATCHED_AT: Final = 80

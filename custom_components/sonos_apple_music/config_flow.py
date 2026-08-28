@@ -91,11 +91,6 @@ class AppleMusicConfigFlow(ConfigFlow, domain=DOMAIN):
         Apple Music is not asked again: its cookie has a reauth flow of its own,
         and this is the only way to reach the SIMKL step once setup is done.
         """
-        entry = self._get_reconfigure_entry()
-        self._data = {
-            CONF_USER_TOKEN: entry.data.get(CONF_USER_TOKEN, ""),
-            CONF_STOREFRONT: entry.data.get(CONF_STOREFRONT, DEFAULT_STOREFRONT),
-        }
         return await self.async_step_simkl_link()
 
     async def async_step_simkl_link(
@@ -156,13 +151,19 @@ class AppleMusicConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     def _async_finish(self, simkl_token: str) -> ConfigFlowResult:
-        """Store what was collected, whichever step the flow started from."""
-        data = {**self._data, CONF_SIMKL_TOKEN: simkl_token}
+        """Store what was collected, whichever step the flow started from.
+
+        Reconfigure writes the token alone: `data_updates` merges, so the Apple
+        Music answers an existing entry holds are already the ones to keep.
+        """
         if self.source == SOURCE_RECONFIGURE:
             return self.async_update_reload_and_abort(
-                self._get_reconfigure_entry(), data_updates=data
+                self._get_reconfigure_entry(),
+                data_updates={CONF_SIMKL_TOKEN: simkl_token},
             )
-        return self.async_create_entry(title="Apple Music", data=data)
+        return self.async_create_entry(
+            title="Apple Music", data={**self._data, CONF_SIMKL_TOKEN: simkl_token}
+        )
 
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]

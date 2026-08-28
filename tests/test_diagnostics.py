@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import patch
 
-from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
@@ -13,7 +11,15 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
 from custom_components.sonos_apple_music.applemusic.const import CONF_USER_TOKEN
 from custom_components.sonos_apple_music.simkl.const import CONF_SIMKL_TOKEN
 
-from .conftest import STOREFRONT, USER_TOKEN
+from .conftest import (
+    APPLE_TV_ATTRIBUTES,
+    SHOW_ID,
+    STOREFRONT,
+    USER_TOKEN,
+    add_player,
+    scrobble_url,
+    simkl_finds,
+)
 
 
 async def loaded(hass, config_entry, **data):
@@ -83,33 +89,19 @@ async def test_it_names_the_players_watched_and_the_ids_resolved(
     The cache is filled by playing something rather than by reaching into the
     client, so what the report shows is what a real scrobble put there.
     """
-    aioclient_mock.get(
-        "https://api.simkl.com/search/tv", json=[{"ids": {"simkl_id": 1624792}}]
-    )
-    aioclient_mock.post("https://api.simkl.com/scrobble/start", json={"id": 1624792})
-    player = er.async_get(hass).async_get_or_create(
-        "media_player", "apple_tv", "atv-1", suggested_object_id="atv_1"
-    ).entity_id
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("start"), json={"id": SHOW_ID})
+    player = add_player(hass)
 
     await loaded(hass, config_entry, **{CONF_SIMKL_TOKEN: "simkl-token"})
-    hass.states.async_set(
-        player,
-        "playing",
-        {
-            "app_id": "com.apple.TVWatchList",
-            "media_content_id": "A0054401004",
-            "media_title": "Black Bird",
-            "media_duration": 3600,
-        },
-    )
-    for _ in range(50):
-        await asyncio.sleep(0)
+    hass.states.async_set(player, "playing", APPLE_TV_ATTRIBUTES)
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     report = await get_diagnostics_for_config_entry(hass, hass_client, config_entry)
 
     assert report["simkl"]["linked"] is True
     assert report["simkl"]["watching"] == [player]
-    assert report["simkl"]["shows"] == {"Black Bird": 1624792}
+    assert report["simkl"]["shows"] == {"Black Bird": SHOW_ID}
 
 
 async def test_an_entry_that_failed_setup_still_reports(
@@ -132,6 +124,6 @@ async def test_an_entry_that_failed_setup_still_reports(
 
     report = await get_diagnostics_for_config_entry(hass, hass_client, config_entry)
 
-    assert report["loaded"] is False
+    assert report["state"] == "setup_retry"
     assert report["entry"][CONF_USER_TOKEN] == "**REDACTED**"
     assert "apple_music" not in report

@@ -33,8 +33,10 @@ async def async_get_config_entry_diagnostics(
     runtime: RuntimeData | None = hass.data.get(DOMAIN)
 
     payload: dict[str, Any] = {
-        "entry": async_redact_data(dict(entry.data), TO_REDACT),
-        "loaded": runtime is not None,
+        # Home Assistant's own verdict rather than one derived from hass.data,
+        # and it distinguishes a retrying entry from a failed one.
+        "state": entry.state.value,
+        "entry": async_redact_data(entry.data, TO_REDACT),
     }
 
     # An entry that failed setup is the one most worth asking about, and it has

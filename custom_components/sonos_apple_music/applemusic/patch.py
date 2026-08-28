@@ -181,36 +181,30 @@ def _account_serial(hass: HomeAssistant, favorites: Any) -> int:
     """
     if (serial := discover_sn(favorites)) is not None:
         ir.async_delete_issue(hass, DOMAIN, _NO_FAVORITE_ISSUE)
-        _remember_serial(hass, serial)
-        return serial
+    else:
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            _NO_FAVORITE_ISSUE,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=_NO_FAVORITE_ISSUE,
+        )
+        _LOGGER.warning(
+            "No Apple Music favorite found on this household, so the account "
+            "serial is a guess (sn=%s); playback may enqueue and stay silent. "
+            "Add any Apple Music favorite in the Sonos app to fix this",
+            DEFAULT_SN,
+        )
+        serial = DEFAULT_SN
 
-    ir.async_create_issue(
-        hass,
-        DOMAIN,
-        _NO_FAVORITE_ISSUE,
-        is_fixable=False,
-        severity=ir.IssueSeverity.WARNING,
-        translation_key=_NO_FAVORITE_ISSUE,
-    )
-    _LOGGER.warning(
-        "No Apple Music favorite found on this household, so the account serial "
-        "is a guess (sn=%s); playback may enqueue and stay silent. Add any Apple "
-        "Music favorite in the Sonos app to fix this",
-        DEFAULT_SN,
-    )
-    _remember_serial(hass, DEFAULT_SN)
-    return DEFAULT_SN
-
-
-def _remember_serial(hass: HomeAssistant, serial: int) -> None:
-    """Keep the serial a browse used, so diagnostics can report it.
-
-    Nothing else records it: it is rediscovered on every browse and used inline,
-    so a household whose playback enqueues and stays silent has no way to say
-    which serial that playback carried.
-    """
+    # Kept so diagnostics can report it. Nothing else records it: it is
+    # rediscovered on every play and used inline, so a household whose playback
+    # enqueues and stays silent has no way to say which serial it carried. One
+    # exit rather than two, so a third could not be added that forgets to.
     if (runtime := hass.data.get(DOMAIN)) is not None:
         runtime.account_serial = serial
+    return serial
 
 
 def _make_play(original: Callable[..., Any]) -> Callable[..., Any]:

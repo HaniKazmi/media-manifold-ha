@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.test_util.aiohttp import (
+    AiohttpClientMockResponse,
+)
 from soco.data_structures import DidlResource
 
 from custom_components.sonos_apple_music.applemusic import patch as applemusic_patch
@@ -354,3 +359,94 @@ def config_entry() -> MockConfigEntry:
         title="Apple Music",
         data={CONF_USER_TOKEN: USER_TOKEN, CONF_STOREFRONT: STOREFRONT},
     )
+
+
+# --- SIMKL -------------------------------------------------------------------
+#
+# Shared so that the search's answer is written once. It replies with `simkl_id`
+# and the scrobble endpoints expect `simkl`; confusing the two is answered with
+# a 201 that records nothing, and a per-file copy of this reply would let two
+# suites keep passing against a shape SIMKL no longer sends.
+
+SIMKL_SEARCH = "https://api.simkl.com/search/tv"
+SIMKL_ACTS = ("start", "pause", "stop")
+SHOW_ID = 1624792
+
+# What the Apple TV app reports while playing Black Bird, season 1, episode 4.
+APPLE_TV_ATTRIBUTES = {
+    "app_id": "com.apple.TVWatchList",
+    "media_content_id": "A0054401004",
+    "media_title": "Black Bird",
+    "media_duration": 3600,
+}
+
+
+def scrobble_url(act: str) -> str:
+    return f"https://api.simkl.com/scrobble/{act}"
+
+
+def simkl_finds(aioclient_mock, show_id: int | None = SHOW_ID) -> None:
+    """Answer the search the way SIMKL does — with `simkl_id`, not `simkl`."""
+    ids = {"simkl_id": show_id} if show_id is not None else {}
+    aioclient_mock.get(SIMKL_SEARCH, json=[{"title": "Black Bird", "ids": ids}])
+
+
+def sent(aioclient_mock, method: str) -> list:
+    """The requests of one method that reached SIMKL, in order."""
+    return [call for call in aioclient_mock.mock_calls if call[0].lower() == method]
+
+
+def add_player(hass, platform: str = "apple_tv", unique_id: str = "atv-1") -> str:
+    """Register a media player the way its integration would."""
+    entry = er.async_get(hass).async_get_or_create(
+        "media_player", platform, unique_id, suggested_object_id=unique_id
+    )
+    return entry.entity_id
+
+
+class Simkl:
+    """A SIMKL that knows the show, and says when each act has reached it."""
+
+    def __init__(self, aioclient_mock, stop_status: int = 200) -> None:
+        self._mock = aioclient_mock
+        self._stop_status = stop_status
+        self.done = {act: asyncio.Event() for act in SIMKL_ACTS}
+        simkl_finds(aioclient_mock)
+        for act in SIMKL_ACTS:
+            aioclient_mock.post(scrobble_url(act), side_effect=self._accept)
+
+    async def _accept(self, method, url, data):
+        act = url.path.rsplit("/", 1)[-1]
+        self.done[act].set()
+        if act == "stop" and self._stop_status != 200:
+            return AiohttpClientMockResponse(
+                method, url, status=self._stop_status, json={"error": "already_watched"}
+            )
+        return AiohttpClientMockResponse(method, url, json={"id": SHOW_ID})
+
+    @property
+    def posts(self) -> list:
+        return sent(self._mock, "post")
+
+    async def wait_for(self, hass, act: str = "start") -> list:
+        """Wait for one act to reach SIMKL, and for its task to finish."""
+        async with asyncio.timeout(1):
+            await self.done[act].wait()
+        await hass.async_block_till_done(wait_background_tasks=True)
+        return self.posts
+
+    async def nothing_sent(self, hass) -> bool:
+        """Whether nothing was scrobbled, once everything in flight is done."""
+        await hass.async_block_till_done(wait_background_tasks=True)
+        return not self.posts
+
+
+@pytest.fixture
+def simkl(aioclient_mock) -> Simkl:
+    return Simkl(aioclient_mock)
+
+
+@pytest.fixture
+def simkl_already_has_it(aioclient_mock) -> Simkl:
+    """SIMKL answering a stop with the 409 it uses for an episode it holds."""
+    return Simkl(aioclient_mock, stop_status=409)

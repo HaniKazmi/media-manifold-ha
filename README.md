@@ -283,11 +283,13 @@ carrying the show, its numbering, the progress it finished at, the SIMKL id it
 resolved to and the player it was watched on. Only that moment is announced:
 starting and pausing are reported to SIMKL and nothing else.
 
-Whether an episode counts as watched is SIMKL's rule, not one applied here —
+Whether an episode counts as watched is SIMKL's rule, applied on their side —
 `/scrobble/stop` marks it at 80% and saves a resume point below that — so the
-scrobble path stays free of any threshold. The event mirrors the same number so
-that what it announces is what SIMKL recorded, and it does not fire for a 409:
-that episode reached the history through some other call.
+scrobble path itself carries no threshold. Announcing it does need one, because
+the response does not say which of the two SIMKL did, so `watch.marks_watched`
+mirrors the published 80 with nothing keeping the two in step. If SIMKL moves
+that number, this is the line that has to move with it. The event does not fire
+for a 409: that episode reached the history through some other call.
 
 `logbook.py` describes the event, so it reads as *SIMKL — marked Black Bird
 S01E04 watched* on the Apple TV's **own** logbook timeline. Asking a player what

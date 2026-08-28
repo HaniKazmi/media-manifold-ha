@@ -16,29 +16,56 @@ endpoint *returns* the key as ``simkl_id`` and the scrobble endpoints expect
 no show, and nothing is recorded. Only the body distinguishes them, so only the
 body is believed.
 
-Nothing here raises into the caller. A scrobble is a report about television,
-and the worst it may cost is a log line.
+This module speaks HTTP and nothing else. It raises nothing, and it touches no
+Home Assistant state: what a rejected token should show a household is a
+question about Home Assistant, and it is answered a layer up in `watch.py`,
+where this integration's other user-facing reporting already lives.
 """
 
 from __future__ import annotations
 
 import asyncio
+from enum import StrEnum
 from http import HTTPStatus
 import logging
-from typing import Any
+import time
+from typing import Any, Final
 
 from aiohttp import ClientError
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from ..const import DOMAIN
 from . import playing
 from .const import API_BASE, QUERY
 
 _LOGGER = logging.getLogger(__name__)
 
-TOKEN_ISSUE = "simkl_token_rejected"
+# How long a title SIMKL could not name stays unsearched. A show it has not
+# matched yet is matched as its catalogue fills, so the miss cannot be kept
+# forever — but re-asking on every transition is three identical questions an
+# episode, about a title whose answer will not change this evening.
+_MISS_TTL: Final = 3600
+
+# What SIMKL's refusals mean, for the one line that reports them. Every entry
+# ends the scrobble; only the reason differs.
+_REFUSALS: Final = {
+    # Recorded within the hour already, and it declines to do so twice.
+    HTTPStatus.CONFLICT: "already holds",
+    # Never retried: one that landed after the next transition would describe a
+    # moment that has passed, and that transition says it better.
+    HTTPStatus.TOO_MANY_REQUESTS: "rate-limited",
+    HTTPStatus.UNAUTHORIZED: "rejected the token for",
+    # The ids were matched against nothing.
+    HTTPStatus.NOT_FOUND: "could not match",
+}
+
+
+class Result(StrEnum):
+    """What became of one scrobble."""
+
+    RECORDED = "recorded"
+    DECLINED = "declined"
+    TOKEN_REJECTED = "token_rejected"
 
 
 class SimklClient:
@@ -50,8 +77,12 @@ class SimklClient:
         # Show title -> SIMKL id. A household rewatches a handful of shows, so
         # this is one search per show rather than one per transition.
         self._show_ids: dict[str, int] = {}
+        # Show title -> when SIMKL last failed to name it, to the same end.
+        self._missed: dict[str, float] = {}
         # SIMKL holds a 20-second lock per user and answers overlapping calls
         # with 429, so the three transitions of one episode are sent in turn.
+        # Resolving the show inside it too means the pair an episode boundary
+        # produces — a stop and a start of the same show — asks once.
         self._lock = asyncio.Lock()
 
     @property
@@ -63,36 +94,44 @@ class SimklClient:
         """
         return dict(self._show_ids)
 
-    async def async_scrobble(self, event: playing.Event) -> bool:
-        """Report one transition. True when SIMKL recorded *this* call."""
-        show_id = await self.async_show_id(event.episode.show)
-        if show_id is None:
-            return False
+    def show_id(self, title: str) -> int | None:
+        """The id already resolved for a title, without searching for one."""
+        return self._show_ids.get(title)
 
-        payload: dict[str, Any] = {
-            # `simkl`, not the `simkl_id` the search answers with: the write side
-            # ignores an ids object it does not recognise and reports success.
-            "show": {"ids": {"simkl": show_id}},
-            "episode": {
-                "season": event.episode.season,
-                "number": event.episode.number,
-            },
-        }
-        if event.progress is not None:
-            payload["progress"] = event.progress
-
+    async def async_scrobble(self, event: playing.Event) -> Result:
+        """Report one transition, and say what SIMKL made of it."""
         async with self._lock:
+            show_id = await self._async_show_id(event.episode.show)
+            if show_id is None:
+                return Result.DECLINED
+
+            payload: dict[str, Any] = {
+                # `simkl`, not the `simkl_id` the search answers with: the write
+                # side ignores an ids object it does not recognise and reports
+                # success.
+                "show": {"ids": {"simkl": show_id}},
+                "episode": {
+                    "season": event.episode.season,
+                    "number": event.episode.number,
+                },
+            }
+            if event.progress is not None:
+                payload["progress"] = event.progress
+
             return await self._async_post(event, payload)
 
-    async def async_show_id(self, title: str) -> int | None:
+    async def _async_show_id(self, title: str) -> int | None:
         """The SIMKL id for a show title, searched once and remembered.
 
-        Only hits are kept. A miss caches nothing because SIMKL matches new shows
-        as its catalogue fills, and remembering the miss would hold a show
-        unscrobbled until something reloaded the entry.
+        A miss is remembered for `_MISS_TTL` and a failure to reach SIMKL is not
+        remembered at all: the first is an answer that may change, the second is
+        not an answer.
         """
         if (cached := self._show_ids.get(title)) is not None:
             return cached
+
+        if time.monotonic() - self._missed.get(title, -_MISS_TTL) < _MISS_TTL:
+            return None
 
         session = async_get_clientsession(self._hass)
         try:
@@ -105,23 +144,23 @@ class SimklClient:
             _LOGGER.debug("SIMKL search for %r failed: %s", title, err)
             return None
 
-        if not results or not isinstance(results, list):
-            _LOGGER.debug("SIMKL knows no show called %r; not scrobbling it", title)
-            return None
-
-        if (show_id := (results[0].get("ids") or {}).get("simkl_id")) is None:
-            _LOGGER.debug("SIMKL's first hit for %r carries no id", title)
+        first = results[0] if results and isinstance(results, list) else {}
+        if (show_id := (first.get("ids") or {}).get("simkl_id")) is None:
+            _LOGGER.debug("SIMKL names no show %r; not scrobbling it for now", title)
+            self._missed[title] = time.monotonic()
             return None
 
         self._show_ids[title] = show_id
         return show_id
 
-    async def _async_post(self, event: playing.Event, payload: dict[str, Any]) -> bool:
+    async def _async_post(
+        self, event: playing.Event, payload: dict[str, Any]
+    ) -> Result:
         """Send one scrobble and read what SIMKL made of it.
 
-        False covers every way a call can fail to add something new, the 409
-        included: that episode is on the history, but an earlier call put it
-        there, so anything announcing a fresh one would be announcing it twice.
+        Only a body echoing a non-zero id counts as recorded. A 409 does not:
+        that episode is on the history, but an earlier call put it there, so
+        anything announcing a fresh one would be announcing it twice.
         """
         session = async_get_clientsession(self._hass)
         try:
@@ -135,29 +174,18 @@ class SimklClient:
                 body = await response.json(content_type=None) if status < 400 else None
         except (ClientError, TimeoutError, ValueError) as err:
             _LOGGER.debug("SIMKL %s for %s failed: %s", event.act, event.episode, err)
-            return False
-
-        if status == HTTPStatus.CONFLICT:
-            # SIMKL has recorded this episode within the hour and declines to do
-            # it twice. The scrobble arrived; there is nothing to fix.
-            _LOGGER.debug("SIMKL already has %s; %s ignored", event.episode, event.act)
-            return False
-
-        if status == HTTPStatus.TOO_MANY_REQUESTS:
-            # Not retried. By the time a retry landed it would describe a moment
-            # that has passed, and the next transition says the same thing better.
-            _LOGGER.debug("SIMKL rate-limited %s for %s", event.act, event.episode)
-            return False
-
-        if status == HTTPStatus.UNAUTHORIZED:
-            self._async_token_rejected()
-            return False
+            return Result.DECLINED
 
         if status >= 400:
             _LOGGER.debug(
-                "SIMKL answered %s to %s for %s", status, event.act, event.episode
+                "SIMKL %s %s (%s)",
+                _REFUSALS.get(status, f"answered {status} to"),
+                event.episode,
+                event.act,
             )
-            return False
+            if status == HTTPStatus.UNAUTHORIZED:
+                return Result.TOKEN_REJECTED
+            return Result.DECLINED
 
         if not (isinstance(body, dict) and body.get("id")):
             _LOGGER.warning(
@@ -167,28 +195,7 @@ class SimklClient:
                 event.episode,
                 body,
             )
-            return False
+            return Result.DECLINED
 
         _LOGGER.debug("SIMKL %s %s at %s%%", event.act, event.episode, event.progress)
-        ir.async_delete_issue(self._hass, DOMAIN, TOKEN_ISSUE)
-        return True
-
-    def _async_token_rejected(self) -> None:
-        """Raise a repair, rather than putting the whole entry into reauth.
-
-        A SIMKL token lasts five years, and the entry's reauth flow asks for the
-        Apple Music cookie. Sending someone there to fix scrobbling would make
-        the common path stranger to serve the rare one.
-        """
-        ir.async_create_issue(
-            self._hass,
-            DOMAIN,
-            TOKEN_ISSUE,
-            is_fixable=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key=TOKEN_ISSUE,
-        )
-        _LOGGER.warning(
-            "SIMKL rejected the stored token; Apple TV playback is not being "
-            "scrobbled. Reconfigure the integration to link SIMKL again"
-        )
+        return Result.RECORDED

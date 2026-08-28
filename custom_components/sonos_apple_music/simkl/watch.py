@@ -9,6 +9,10 @@ Players are found through the entity registry rather than the loaded config
 entries, so the two integrations can start in either order: a registry that
 already names an Apple TV is enough to subscribe, and subscribing to a state
 that does not exist yet is answered when it appears.
+
+Everything this integration tells a household about scrobbling is decided here
+— the watched event and the repair issue both — so that `api.py` below can stay
+a thing that speaks HTTP and knows nothing about Home Assistant.
 """
 
 from __future__ import annotations
@@ -19,17 +23,38 @@ import logging
 from homeassistant.components.media_player import DOMAIN as MEDIA_PLAYER_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
+from ..const import DOMAIN
 from . import playing
-from .api import SimklClient
-from .const import CONF_SIMKL_TOKEN, EVENT_WATCHED, WATCHED_AT
+from .api import Result, SimklClient
+from .const import CONF_SIMKL_TOKEN, EVENT_WATCHED, TOKEN_ISSUE, WATCHED_AT
 
 _LOGGER = logging.getLogger(__name__)
 
 APPLE_TV_DOMAIN = "apple_tv"
+
+
+def marks_watched(scrobble: playing.Event) -> bool:
+    """Whether SIMKL counts this scrobble as having watched the episode.
+
+    The rule is SIMKL's and is applied on their side; this is the local mirror
+    of it, kept in one place so there is one line to correct if their threshold
+    moves. Their answer is not readable from the response, so it cannot simply
+    be asked for.
+    """
+    return scrobble.act == "stop" and (scrobble.progress or 0) >= WATCHED_AT
+
+
+def _is_apple_tv(entity: er.RegistryEntry | None) -> bool:
+    """Whether a registry entry is a player worth subscribing to."""
+    return (
+        entity is not None
+        and entity.platform == APPLE_TV_DOMAIN
+        and entity.domain == MEDIA_PLAYER_DOMAIN
+    )
 
 
 def async_start(hass: HomeAssistant, entry: ConfigEntry) -> Scrobbler | None:
@@ -88,12 +113,22 @@ class Scrobbler:
 
     @callback
     def _async_registry_changed(self, event: Event) -> None:
-        """Re-subscribe when an entity appears or goes away.
+        """Re-subscribe when an Apple TV appears or goes away.
 
-        Only creations and removals can change the set of players; an update is
-        a rename or a settings change to one already subscribed.
+        Every entity in Home Assistant passes through here, and a household has
+        thousands, so whether this one matters is settled by a dict lookup
+        before the registry is scanned. Only creations and removals can change
+        the set: an update is a rename or a setting on one already known.
         """
-        if event.data["action"] in ("create", "remove"):
+        action, entity_id = event.data["action"], event.data["entity_id"]
+        if action == "remove":
+            ours = entity_id in self._watching
+        elif action == "create":
+            ours = _is_apple_tv(er.async_get(self._hass).async_get(entity_id))
+        else:
+            ours = False
+
+        if ours:
             self._async_resubscribe()
 
     @callback
@@ -102,8 +137,7 @@ class Scrobbler:
         entity_ids = [
             entity.entity_id
             for entity in registry.entities.values()
-            if entity.platform == APPLE_TV_DOMAIN
-            and entity.domain == MEDIA_PLAYER_DOMAIN
+            if _is_apple_tv(entity)
         ]
 
         if self._unsub_states is not None:
@@ -139,16 +173,26 @@ class Scrobbler:
             )
 
     async def _async_report(self, scrobble: playing.Event, entity_id: str) -> None:
-        """Send one scrobble, and announce an episode that reached the history.
+        """Send one scrobble, and say what came of it.
 
-        The announcement is the scrobbler's to make rather than the client's:
-        firing an event is a Home Assistant concern, and the player it was
-        watched on is known here and nowhere below.
+        Both ways of saying it are Home Assistant's, not the client's: an event
+        for an episode that reached the history, a repair for a token SIMKL has
+        stopped accepting. The player it was watched on is known here and
+        nowhere below.
         """
-        if not await self._client.async_scrobble(scrobble):
+        result = await self._client.async_scrobble(scrobble)
+
+        if result is Result.TOKEN_REJECTED:
+            self._async_token_rejected()
             return
 
-        if scrobble.act != "stop" or (scrobble.progress or 0) < WATCHED_AT:
+        if result is not Result.RECORDED:
+            return
+
+        # A scrobble that lands proves the token, whatever it was doing before.
+        ir.async_delete_issue(self._hass, DOMAIN, TOKEN_ISSUE)
+
+        if not marks_watched(scrobble):
             return
 
         self._hass.bus.async_fire(
@@ -159,6 +203,27 @@ class Scrobbler:
                 "season": scrobble.episode.season,
                 "episode": scrobble.episode.number,
                 "progress": scrobble.progress,
-                "simkl_id": self._client.shows.get(scrobble.episode.show),
+                "simkl_id": self._client.show_id(scrobble.episode.show),
             },
+        )
+
+    @callback
+    def _async_token_rejected(self) -> None:
+        """Raise a repair, rather than putting the whole entry into reauth.
+
+        A SIMKL token lasts five years, and the entry's reauth flow asks for the
+        Apple Music cookie. Sending someone there to fix scrobbling would make
+        the common path stranger to serve the rare one.
+        """
+        ir.async_create_issue(
+            self._hass,
+            DOMAIN,
+            TOKEN_ISSUE,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=TOKEN_ISSUE,
+        )
+        _LOGGER.warning(
+            "SIMKL rejected the stored token; Apple TV playback is not being "
+            "scrobbled. Reconfigure the integration to link SIMKL again"
         )

@@ -31,7 +31,7 @@ class RuntimeData:
     # None when SIMKL is not linked, which is also when nothing is subscribed.
     scrobbler: Scrobbler | None = None
 
-    # The household's Apple Music serial as the last browse read it, or None
-    # before one has happened. Kept because a wrong serial enqueues items that
-    # never play, and nothing else records which one was used.
+    # The household's Apple Music serial as the last play read it from a
+    # favorite, or None before one has happened. Kept because a wrong serial
+    # enqueues items that never play, and nothing else records which was used.
     account_serial: int | None = None
