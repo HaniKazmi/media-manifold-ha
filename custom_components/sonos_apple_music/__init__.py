@@ -76,22 +76,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         grafted[graft.NAME] = graft.async_install(hass)
         entry.async_on_unload(graft.async_remove)
 
-    # Only a household with none of the players has nothing to set up, and that
-    # is usually one that has not finished starting, so it retries. A graft that
-    # declines while another takes is not retried: adding Sonos to a household
-    # that had only an Apple TV needs a reload of this entry, or a restart.
-    if not any(grafted.values()):
-        hass.data.pop(DOMAIN, None)
-        raise ConfigEntryNotReady(
-            f"None of {', '.join(grafted)} is ready; the grafts will install "
-            f"once one of them is"
-        )
-
+    # Started before the readiness check below: it reads states Home Assistant
+    # already publishes and touches neither seam, so a household whose grafts
+    # both decline still has scrobbling to do.
     if (scrobbler := simkl.async_start(hass, entry)) is not None:
         runtime.scrobbler = scrobbler
         entry.async_on_unload(scrobbler.async_stop)
 
-    entry.async_on_unload(entry.add_update_listener(_async_reload))
+    # Only a household with nothing at all to set up waits, and that is usually
+    # one that has not finished starting, so it retries. A graft that declines
+    # while another takes is not retried: adding Sonos to a household that had
+    # only an Apple TV needs a reload of this entry, or a restart.
+    if not any(grafted.values()) and scrobbler is None:
+        hass.data.pop(DOMAIN, None)
+        raise ConfigEntryNotReady(
+            f"None of {', '.join(grafted)} is ready and SIMKL is not linked; "
+            f"the grafts will install once one of them is"
+        )
+
     _LOGGER.info(
         "Grafted onto %s; Apple Music storefront %s, library %s, SIMKL %s",
         ", ".join(f"{name} {'yes' if ok else 'no'}" for name, ok in grafted.items()),
@@ -108,5 +110,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)

@@ -287,7 +287,7 @@ async def test_simkl_being_unreachable_keeps_the_flow_alive(
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "simkl_pin"
-    assert result["errors"] == {"base": "cannot_connect"}
+    assert result["errors"] == {"base": "simkl_unreachable"}
 
 
 async def test_reconfigure_links_simkl_without_asking_for_apple_again(
@@ -351,7 +351,7 @@ async def test_simkl_failing_the_exchange_says_so_on_the_form(
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
     assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    assert result["errors"] == {"base": "simkl_unreachable"}
 
 
 async def test_reauth_leaves_simkl_linked(hass, config_entry) -> None:
@@ -368,3 +368,19 @@ async def test_reauth_leaves_simkl_linked(hass, config_entry) -> None:
 
     assert result["type"] is FlowResultType.ABORT
     assert config_entry.data[CONF_SIMKL_TOKEN] == "simkl-token"
+
+
+async def test_a_code_simkl_will_not_exchange_is_replaced(hass, aioclient_mock) -> None:
+    """A PIN expires, and showing the same dead one again can only fail again."""
+    result = await reach_simkl_pin(hass, aioclient_mock)
+    aioclient_mock.get(PIN_POLL, status=404)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(
+        PIN_CODE,
+        json={"result": "OK", "user_code": "FRESH", "verification_url": PIN_URL},
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    assert result["description_placeholders"]["code"] == "FRESH"

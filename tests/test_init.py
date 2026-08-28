@@ -16,6 +16,7 @@ import pytest
 from custom_components.sonos_apple_music.applemusic.api import UserTokenInvalid
 from custom_components.sonos_apple_music.applemusic.dev_token import TokenError
 from custom_components.sonos_apple_music.const import DOMAIN
+from custom_components.sonos_apple_music.simkl.const import CONF_SIMKL_TOKEN
 
 SONOS_GRAFT = "custom_components.sonos_apple_music.applemusic.patch.async_install"
 INFUSE_GRAFT = "custom_components.sonos_apple_music.infuse.patch.async_install"
@@ -203,16 +204,37 @@ async def test_the_scrobbler_is_started_and_stopped_with_the_entry(
     scrobbler.async_stop.assert_called_once()
 
 
-async def test_the_scrobbler_is_not_started_when_no_graft_takes(
+async def test_a_linked_household_scrobbles_even_when_no_graft_takes(
     hass, config_entry, resolved_storefront
 ) -> None:
-    """The entry retries, and a scrobbler left watching would outlive the attempt."""
+    """Scrobbling reads states Home Assistant publishes and touches neither seam.
+
+    An upstream rename of a Sonos or Apple TV method must not take it down with
+    the grafts it has nothing to do with.
+    """
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry, data={**config_entry.data, CONF_SIMKL_TOKEN: "simkl-token"}
+    )
     with (
         patch(SONOS_GRAFT, return_value=False),
         patch(INFUSE_GRAFT, return_value=False),
-        patch(SIMKL_WATCH) as start,
+    ):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert hass.data[DOMAIN].scrobbler is not None
+
+
+async def test_an_entry_with_nothing_to_do_waits(
+    hass, config_entry, resolved_storefront
+) -> None:
+    """No graft and no SIMKL is a household that has not finished starting."""
+    with (
+        patch(SONOS_GRAFT, return_value=False),
+        patch(INFUSE_GRAFT, return_value=False),
     ):
         await setup(hass, config_entry)
 
     assert config_entry.state is ConfigEntryState.SETUP_RETRY
-    start.assert_not_called()

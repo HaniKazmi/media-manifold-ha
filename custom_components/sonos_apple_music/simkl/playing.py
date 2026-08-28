@@ -38,6 +38,17 @@ PLAYING = "playing"
 PAUSED = "paused"
 _ACTIVE = frozenset({PLAYING, PAUSED})
 
+# States that say the player stopped answering rather than that playback ended.
+# They carry no attributes at all, so anything said about the episode across one
+# of them is said about a moment before the television went quiet.
+_LOST = frozenset({"unavailable", "unknown"})
+
+# How far a reported position may be carried forward before it stops being a
+# measurement. The television pushes a position every few seconds while it
+# plays, so a gap this long means the connection went away mid-episode and the
+# arithmetic below is extrapolating across time nobody was watching.
+_STALE_AFTER = 300
+
 
 class State(Protocol):
     """The shape of a Home Assistant state, without importing one."""
@@ -84,10 +95,10 @@ def episode(state: State | None) -> Episode | None:
 def progress(state: State, now: datetime) -> float | None:
     """How far through the episode a state is, as a percentage.
 
-    None when the duration is missing, which is what keeps a `pause` or `stop`
-    from being sent at all: both write the number they carry into SIMKL's saved
-    position, so reporting 0 would replace a real resume point with a place
-    nobody watched to.
+    None means unknown, and an event that cannot say where the viewer got to is
+    not sent at all. Both `pause` and `stop` write the number they carry into
+    SIMKL's saved position, so a guess there replaces a real resume point with a
+    place nobody watched to.
     """
     duration = float(state.attributes.get("media_duration") or 0)
     if duration <= 0:
@@ -98,7 +109,14 @@ def progress(state: State, now: datetime) -> float | None:
     # The television reports a position and then stops mentioning it, so while
     # playing the true position is that one plus the time since it was given.
     if state.state == PLAYING and updated is not None:
-        position += (now - updated).total_seconds()
+        elapsed = (now - updated).total_seconds()
+        # Past this the state is a leftover, not a measurement. Carrying it
+        # forward regardless reaches the end of any episode given enough hours
+        # and reports a confident 100%, which SIMKL files as watched — a verdict
+        # about an episode the television stopped describing long before.
+        if elapsed > _STALE_AFTER:
+            return None
+        position += elapsed
 
     return round(min(position / duration * 100, 100), 2)
 
@@ -114,6 +132,12 @@ def events(old: State | None, new: State | None, now: datetime) -> list[Event]:
     was, is_ = episode(old), episode(new)
     was_state = old.state if old is not None else None
     is_state = new.state if new is not None else None
+
+    # A player that has gone quiet has not said anything about the episode, so
+    # nothing is said about it either. What it was doing is still true, and the
+    # transition that eventually describes the end can report it.
+    if is_state in _LOST:
+        return []
 
     out: list[Event | None] = []
 

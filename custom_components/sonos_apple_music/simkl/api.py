@@ -31,7 +31,7 @@ import logging
 import time
 from typing import Any, Final
 
-from aiohttp import ClientError
+from aiohttp import ClientError, ClientTimeout
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -45,6 +45,12 @@ _LOGGER = logging.getLogger(__name__)
 # forever — but re-asking on every transition is three identical questions an
 # episode, about a title whose answer will not change this evening.
 _MISS_TTL: Final = 3600
+
+# Home Assistant's shared session carries aiohttp's default of five minutes,
+# and one request holds the lock every other scrobble in the household is
+# waiting on. A scrobble describes a moment, so one that has not landed in ten
+# seconds has already lost the argument with the transition after it.
+_TIMEOUT: Final = ClientTimeout(total=10)
 
 # What SIMKL's refusals mean, for the one line that reports them. Every entry
 # ends the scrobble; only the reason differs.
@@ -136,7 +142,7 @@ class SimklClient:
         session = async_get_clientsession(self._hass)
         try:
             async with session.get(
-                f"{API_BASE}/search/tv", params={**QUERY, "q": title}
+                f"{API_BASE}/search/tv", params={**QUERY, "q": title}, timeout=_TIMEOUT
             ) as response:
                 response.raise_for_status()
                 results = await response.json(content_type=None)
@@ -144,10 +150,25 @@ class SimklClient:
             _LOGGER.debug("SIMKL search for %r failed: %s", title, err)
             return None
 
-        first = results[0] if results and isinstance(results, list) else {}
-        if (show_id := (first.get("ids") or {}).get("simkl_id")) is None:
-            _LOGGER.debug("SIMKL names no show %r; not scrobbling it for now", title)
+        if not isinstance(results, list):
+            # Not an answer about the show. Remembering it would suppress the
+            # title for an hour on the strength of something SIMKL never said.
+            _LOGGER.debug("SIMKL answered the search for %r with %r", title, results)
+            return None
+
+        if not results:
+            # An answer: the catalogue holds nothing by that name today.
+            _LOGGER.debug("SIMKL knows no show called %r; not scrobbling it", title)
             self._missed[title] = time.monotonic()
+            return None
+
+        first = results[0]
+        ids = first.get("ids") or {} if isinstance(first, dict) else {}
+        if (show_id := ids.get("simkl_id")) is None:
+            # A hit shaped wrongly is the leading indicator for the `simkl_id`
+            # versus `simkl` confusion this module exists to get right, so it is
+            # said separately and is not remembered as a miss.
+            _LOGGER.debug("SIMKL's first hit for %r carries no id: %r", title, first)
             return None
 
         self._show_ids[title] = show_id
@@ -169,6 +190,7 @@ class SimklClient:
                 params=QUERY,
                 json=payload,
                 headers={"Authorization": f"Bearer {self._token}"},
+                timeout=_TIMEOUT,
             ) as response:
                 status = response.status
                 body = await response.json(content_type=None) if status < 400 else None
@@ -178,11 +200,17 @@ class SimklClient:
 
         if status >= 400:
             _LOGGER.debug(
-                "SIMKL %s %s (%s)",
-                _REFUSALS.get(status, f"answered {status} to"),
+                "SIMKL %s %s (%s, status %s)",
+                _REFUSALS.get(status, "answered"),
                 event.episode,
                 event.act,
+                status,
             )
+            if status == HTTPStatus.NOT_FOUND:
+                # SIMKL will not resolve the id this show was cached under, so
+                # keeping it would make every later episode fail the same way.
+                # Dropping it sends the next transition back to the search.
+                self._show_ids.pop(event.episode.show, None)
             if status == HTTPStatus.UNAUTHORIZED:
                 return Result.TOKEN_REJECTED
             return Result.DECLINED

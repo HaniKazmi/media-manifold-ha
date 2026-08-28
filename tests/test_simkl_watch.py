@@ -281,3 +281,91 @@ async def test_renaming_an_entity_is_not_a_change_of_players(
     assert scrobbler.watching == [player]
     hass.states.async_set(player, "playing", APPLE_TV_ATTRIBUTES)
     assert await simkl.wait_for(hass)
+
+
+async def test_renaming_the_entity_id_keeps_the_player_watched(
+    hass, config_entry, watching, simkl
+) -> None:
+    """The subscription is keyed on the entity id, so a change to it must follow.
+
+    Home Assistant reports an id change as an update carrying `old_entity_id`,
+    not as a remove and a create, so nothing else would ever resubscribe.
+    """
+    player = add_player(hass)
+    scrobbler = watching(config_entry)
+
+    renamed = er.async_get(hass).async_update_entity(
+        player, new_entity_id="media_player.lounge_tv"
+    ).entity_id
+    await hass.async_block_till_done()
+
+    assert scrobbler.watching == [renamed]
+    hass.states.async_set(renamed, "playing", APPLE_TV_ATTRIBUTES)
+    assert await simkl.wait_for(hass)
+
+
+async def test_a_disabled_player_is_not_watched(
+    hass, config_entry, watching, simkl
+) -> None:
+    """It never reaches the state machine, so naming it answers nothing."""
+    registry = er.async_get(hass)
+    entry = registry.async_get_or_create(
+        "media_player",
+        "apple_tv",
+        "atv-disabled",
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    scrobbler = watching(config_entry)
+
+    assert entry.entity_id not in scrobbler.watching
+
+
+async def test_the_apple_tv_remote_is_not_a_player(
+    hass, config_entry, watching, simkl
+) -> None:
+    """apple_tv ships a remote platform too, and it plays nothing."""
+    remote = er.async_get(hass).async_get_or_create(
+        "remote", "apple_tv", "atv-remote"
+    )
+    scrobbler = watching(config_entry)
+
+    assert remote.entity_id not in scrobbler.watching
+
+
+async def test_linking_simkl_clears_a_standing_token_repair(
+    hass, config_entry, watching, simkl
+) -> None:
+    """A token just stored has not been rejected."""
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        TOKEN_ISSUE,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=TOKEN_ISSUE,
+    )
+    watching(config_entry)
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, TOKEN_ISSUE) is None
+
+
+async def test_unlinking_simkl_clears_a_standing_token_repair(
+    hass, config_entry, watching, simkl
+) -> None:
+    """Taking the repair's own advice must not leave the repair standing.
+
+    Its remedy is to reconfigure, and choosing not to scrobble is a valid answer
+    there — after which no scrobble will ever land to clear it.
+    """
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        TOKEN_ISSUE,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=TOKEN_ISSUE,
+    )
+
+    assert watching(config_entry, token="") is None
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, TOKEN_ISSUE) is None

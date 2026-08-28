@@ -121,7 +121,7 @@ class AppleMusicConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._code = await pin.async_request_code(self.hass)
             except pin.PinError as err:
                 _LOGGER.debug("SIMKL would not issue a code: %s", err)
-                return self._pin_form({"base": "cannot_connect"})
+                return self._pin_form({"base": "simkl_unreachable"})
             return self._pin_form()
 
         if user_input is None:
@@ -130,8 +130,12 @@ class AppleMusicConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             token = await pin.async_poll(self.hass, self._code.user_code)
         except pin.PinError as err:
+            # A code SIMKL will not exchange is most often one that has expired,
+            # and showing the same one again can only fail the same way. Dropping
+            # it means the next Submit asks for a fresh code.
             _LOGGER.debug("SIMKL would not exchange the code: %s", err)
-            return self._pin_form({"base": "cannot_connect"})
+            self._code = None
+            return self._pin_form({"base": "simkl_unreachable"})
 
         if token is None:
             return self._pin_form({"base": "authorization_pending"})

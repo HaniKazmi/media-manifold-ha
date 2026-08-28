@@ -260,3 +260,49 @@ async def test_an_episode_boundary_asks_about_the_show_once(
     )
 
     assert len(sent(aioclient_mock, "get")) == 1
+
+
+async def test_an_id_simkl_will_not_resolve_is_dropped(hass, aioclient_mock) -> None:
+    """Keeping it would make every later episode of that show fail the same way."""
+    simkl_finds(aioclient_mock)
+    aioclient_mock.post(scrobble_url("stop"), status=404, json={"error": "id_err"})
+
+    client = SimklClient(hass, "token")
+    await client.async_scrobble(scrobble())
+
+    assert client.shows == {}
+
+
+async def test_an_answer_that_is_not_a_list_is_not_remembered(
+    hass, aioclient_mock
+) -> None:
+    """It says nothing about the show, so it must not suppress it for an hour."""
+    aioclient_mock.get(SIMKL_SEARCH, json={"error": "bad"})
+
+    client = SimklClient(hass, "token")
+    await client.async_scrobble(scrobble())
+    await client.async_scrobble(scrobble())
+
+    assert len(sent(aioclient_mock, "get")) == 2
+
+
+async def test_a_hit_carrying_no_id_is_not_remembered(hass, aioclient_mock) -> None:
+    """A wrongly shaped hit is the leading indicator for the ids-key confusion."""
+    simkl_finds(aioclient_mock, show_id=None)
+
+    client = SimklClient(hass, "token")
+    await client.async_scrobble(scrobble())
+    await client.async_scrobble(scrobble())
+
+    assert len(sent(aioclient_mock, "get")) == 2
+
+
+async def test_a_search_hit_that_is_not_an_object_is_survived(
+    hass, aioclient_mock
+) -> None:
+    """A proxy's error page parses as JSON, and this client raises nothing."""
+    aioclient_mock.get(SIMKL_SEARCH, json=["Black Bird"])
+
+    result = await SimklClient(hass, "token").async_scrobble(scrobble())
+
+    assert result is Result.DECLINED

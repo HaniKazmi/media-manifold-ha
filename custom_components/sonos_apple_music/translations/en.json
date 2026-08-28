@@ -18,7 +18,7 @@
       },
       "simkl_link": {
         "title": "Scrobble the Apple TV to SIMKL",
-        "description": "Playback in the Apple TV app can be reported to SIMKL, so episodes you watch there are marked watched. This needs a SIMKL account and nothing else; skip it to leave Apple Music and Infuse exactly as they are.",
+        "description": "Playback in the Apple TV app can be reported to SIMKL, so episodes you watch there are marked watched. This needs a SIMKL account and nothing else.\n\nSkipping leaves Apple Music and Infuse exactly as they are. If SIMKL is already linked, skipping unlinks it and scrobbling stops.",
         "menu_options": {
           "simkl_pin": "Link SIMKL",
           "simkl_skip": "Skip scrobbling"
@@ -33,7 +33,8 @@
       "no_developer_token": "Could not read a developer token from the Apple Music web player. Apple may have changed it; check the logs.",
       "invalid_user_token": "Apple rejected that music user token. Copy the `media-user-token` cookie value again from a signed-in session.",
       "cannot_connect": "Could not reach Apple Music to check the token. Try again once the connection is back.",
-      "authorization_pending": "SIMKL has not seen that code approved yet. Enter it at simkl.com/pin, then press Submit again."
+      "authorization_pending": "SIMKL has not seen that code approved yet. Enter it at simkl.com/pin, then press Submit again.",
+      "simkl_unreachable": "Could not reach SIMKL. Apple Music is unaffected; try again once the connection is back, and a fresh code will be issued."
     },
     "abort": {
       "single_instance_allowed": "Apple Music for Sonos is already configured.",

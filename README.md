@@ -247,10 +247,19 @@ Progress is `media_position` plus the seconds since `media_position_updated_at`
 while playing, over `media_duration`. Those two position attributes are in
 `MediaPlayerEntity._entity_component_unrecorded_attributes`, so they are live
 only and never reach the database — history is no help in reasoning about them.
-Without a duration the progress is unknown rather than zero, and the `pause` or
-`stop` is dropped: both write the number they carry into SIMKL's saved position,
-so reporting zero would replace a real resume point with a place nobody watched
-to.
+
+An unknown progress is not zero and not 100: the `pause` or `stop` carrying it
+is dropped instead. Both write their number into SIMKL's saved position, and
+both are read as a verdict at or above 80%. Two cases produce one: a state with
+no duration, and a position last reported more than five minutes ago — a
+television that went quiet mid-episode, whose position carried forward far
+enough reaches the end of anything and reports a confident 100%.
+
+`unavailable` and `unknown` are read as the player having gone quiet rather than
+as playback ending, so nothing is reported across them. One ambiguity remains
+that Home Assistant cannot resolve: `apple_tv` maps both a finished episode and
+a buffering one to `idle`, so a mid-episode rebuffer is reported as a `stop` at
+the progress reached. That marks it watched early if it is already past 80%.
 
 ### Naming the show to SIMKL
 
@@ -359,9 +368,11 @@ That last one is the failure this integration cannot see from the outside. A
 wrong id is accepted by SIMKL and the episode is filed under whichever show that
 id names, so the cache it came from is the only place the mistake is visible.
 
-Both tokens are redacted, so the file can go into an issue as it is. An entry
-that failed to set up still reports — it is the one most worth asking about, and
-what it was configured with is the answer it has.
+Both tokens are redacted. The show titles are not, because a wrong id is the
+whole reason to read the file, so it doubles as a record of what the household
+has been watching — worth a glance before attaching it to a public issue. An
+entry that failed to set up still reports; it is the one most worth asking
+about, and what it was configured with is the answer it has.
 
 ## Testing
 

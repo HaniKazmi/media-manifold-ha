@@ -49,9 +49,15 @@ def marks_watched(scrobble: playing.Event) -> bool:
 
 
 def _is_apple_tv(entity: er.RegistryEntry | None) -> bool:
-    """Whether a registry entry is a player worth subscribing to."""
+    """Whether a registry entry is a player worth subscribing to.
+
+    Disabled entries are excluded because they never reach the state machine:
+    subscribing costs nothing, but naming one in diagnostics answers "why is
+    nothing being scrobbled" with a player that structurally cannot scrobble.
+    """
     return (
         entity is not None
+        and not entity.disabled
         and entity.platform == APPLE_TV_DOMAIN
         and entity.domain == MEDIA_PLAYER_DOMAIN
     )
@@ -63,12 +69,26 @@ def async_start(hass: HomeAssistant, entry: ConfigEntry) -> Scrobbler | None:
     Linking is what turns this on, and the rest of the integration is unaffected
     by never linking it: without a token nothing subscribes to anything.
     """
+    _async_token_settled(hass)
+
     if not (token := entry.data.get(CONF_SIMKL_TOKEN)):
         return None
 
     scrobbler = Scrobbler(hass, entry, SimklClient(hass, token))
     scrobbler.async_start()
     return scrobbler
+
+
+@callback
+def _async_token_settled(hass: HomeAssistant) -> None:
+    """Drop the rejected-token repair, whatever the entry now holds.
+
+    Both answers make it false: a token that has just been stored has not been
+    rejected, and a household that has unlinked SIMKL is not scrobbling by
+    choice. Leaving it to the next recorded scrobble to clear leaves it standing
+    forever for anyone who took its own advice and unlinked.
+    """
+    ir.async_delete_issue(hass, DOMAIN, TOKEN_ISSUE)
 
 
 class Scrobbler:
@@ -116,9 +136,14 @@ class Scrobbler:
         """Re-subscribe when an Apple TV appears or goes away.
 
         Every entity in Home Assistant passes through here, and a household has
-        thousands, so whether this one matters is settled by a dict lookup
-        before the registry is scanned. Only creations and removals can change
-        the set: an update is a rename or a setting on one already known.
+        thousands, so whether this one matters is settled against the handful
+        already subscribed before the registry is scanned.
+
+        An update usually is a rename or a setting on a player already known —
+        except when it is the *entity id* that changed, which arrives as an
+        update carrying `old_entity_id`. That is the one attribute the
+        subscription is keyed on, so ignoring it leaves this watching an id
+        nothing will ever report again.
         """
         action, entity_id = event.data["action"], event.data["entity_id"]
         if action == "remove":
@@ -126,7 +151,7 @@ class Scrobbler:
         elif action == "create":
             ours = _is_apple_tv(er.async_get(self._hass).async_get(entity_id))
         else:
-            ours = False
+            ours = event.data.get("old_entity_id") in self._watching
 
         if ours:
             self._async_resubscribe()

@@ -2,12 +2,17 @@
 
 Every value here answers a question that otherwise takes a shell on the Home
 Assistant host: whether each graft actually installed, whether the developer
-token scrape is holding, which account serial the last browse used, which
+token scrape is holding, which account serial the last play used, which
 players are being watched, and which SIMKL id a show resolved to.
 
 That last one is the failure this integration cannot see from outside. A wrong
 id is accepted by SIMKL and the episode is filed under whichever show it names,
 so the only place the mistake is visible is the cache it came from.
+
+Credentials are redacted; the resolved show titles are not, because they are the
+point of the report. That makes the file a record of what the household has been
+watching, which is what the README warns before telling anyone to attach it to an
+issue.
 """
 
 from __future__ import annotations

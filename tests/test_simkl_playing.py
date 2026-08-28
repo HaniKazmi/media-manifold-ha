@@ -21,8 +21,7 @@ from custom_components.sonos_apple_music.simkl.playing import (
 
 NOW = datetime(2026, 8, 26, 22, 20, 0, tzinfo=timezone.utc)
 
-# The show that carried this integration's first real scrobble: Black Bird,
-# season 1, episode 4, as the Apple TV app numbers it.
+# Black Bird, season 1, episode 4, as the Apple TV app numbers it.
 BLACK_BIRD = "A0054401004"
 
 
@@ -92,7 +91,7 @@ def test_nothing_playing_is_not_an_episode() -> None:
 
 def test_progress_counts_on_from_the_last_reported_position() -> None:
     """The television reports a position once and then stops mentioning it."""
-    playing = state(position=1200, updated=NOW - timedelta(seconds=600))
+    playing = state(position=1740, updated=NOW - timedelta(seconds=60))
     assert progress(playing, NOW) == 50.0
 
 
@@ -103,9 +102,44 @@ def test_a_paused_position_is_taken_as_it_stands() -> None:
 
 
 def test_progress_stops_at_a_hundred() -> None:
-    """A television left playing past the end would otherwise report 150%."""
-    over = state(position=3600, updated=NOW - timedelta(seconds=1800))
+    """A few seconds past the end is still the end, not 101%."""
+    over = state(position=3600, updated=NOW - timedelta(seconds=60))
     assert progress(over, NOW) == 100.0
+
+
+def test_a_position_carried_too_far_is_unknown_rather_than_complete() -> None:
+    """Extrapolating across hours reaches the end of anything.
+
+    A television that goes quiet mid-episode keeps its last `playing` state, so
+    the arithmetic alone would report a confident 100% and SIMKL would file an
+    episode nobody finished as watched.
+    """
+    stale = state(position=300, updated=NOW - timedelta(hours=2))
+    assert progress(stale, NOW) is None
+
+
+def test_a_paused_position_is_not_aged_out() -> None:
+    """Nothing advances while paused, so an old reading is still the truth."""
+    paused = state("paused", position=3300, updated=NOW - timedelta(hours=2))
+    assert progress(paused, NOW) == pytest.approx(91.67)
+
+
+def test_a_stale_episode_is_not_reported_as_finished() -> None:
+    """The whole point of the bound: no progress, so no stop is sent."""
+    stale = state(position=300, updated=NOW - timedelta(hours=2))
+    assert events(stale, state("idle", content_id=None, title=None), NOW) == []
+
+
+@pytest.mark.parametrize("gone", ["unavailable", "unknown"])
+def test_a_player_that_goes_quiet_says_nothing_about_the_episode(gone) -> None:
+    """These carry no attributes, so any verdict would describe an earlier moment."""
+    playing = state(position=3550, updated=NOW)
+    assert events(playing, state(gone, content_id=None, title=None), NOW) == []
+
+
+def test_an_app_that_is_not_the_apple_tv_app_is_not_an_episode() -> None:
+    """The content-id shape alone is not the gate; the app has to match too."""
+    assert episode(state(app="com.netflix.Netflix")) is None
 
 
 def test_progress_without_a_duration_is_unknown_rather_than_zero() -> None:
@@ -171,3 +205,15 @@ def test_an_unrelated_attribute_change_asks_for_nothing() -> None:
     """The television republishes its state constantly; only changes matter."""
     playing = state(position=1200, updated=NOW)
     assert events(playing, playing, NOW) == []
+
+
+def test_a_change_while_already_paused_reports_nothing() -> None:
+    """Only the moment of pausing is a pause; the state then repeats itself."""
+    paused = state("paused", position=1800, updated=NOW)
+    assert events(paused, state("paused", position=1800, updated=NOW), NOW) == []
+
+
+def test_arriving_at_paused_from_a_standstill_is_not_a_pause() -> None:
+    """Nothing was playing, so nothing was paused."""
+    idle = state("idle", content_id=None, title=None)
+    assert events(idle, state("paused", position=1800, updated=NOW), NOW) == []
