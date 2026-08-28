@@ -352,3 +352,19 @@ async def test_simkl_failing_the_exchange_says_so_on_the_form(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_reauth_leaves_simkl_linked(hass, config_entry) -> None:
+    """The two credentials expire on their own schedules and are replaced apart."""
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry, data={**config_entry.data, CONF_SIMKL_TOKEN: "simkl-token"}
+    )
+
+    result = await config_entry.start_reauth_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USER_TOKEN: ""}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert config_entry.data[CONF_SIMKL_TOKEN] == "simkl-token"
