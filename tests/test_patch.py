@@ -35,6 +35,7 @@ from custom_components.sonos_apple_music.applemusic.patch import (
     async_remove,
 )
 from custom_components.sonos_apple_music.const import DOMAIN
+from custom_components.sonos_apple_music.data import RuntimeData
 
 from .conftest import ALBUM_ID, APPLE_FAVORITE, SONG_ID, FakeFavorite, FakeSoco
 
@@ -84,7 +85,7 @@ def sonos(monkeypatch):
 @pytest.fixture
 def installed(hass, client, sonos):
     """Patch Sonos for the duration of a test, and always put it back."""
-    hass.data[DOMAIN] = client
+    hass.data[DOMAIN] = RuntimeData(apple_music=client)
     assert async_install(hass) is True
     yield sonos
     async_remove()
@@ -118,7 +119,7 @@ def test_install_replaces_and_remove_restores(hass, client, sonos) -> None:
         SonosMediaPlayerEntity.async_play_media,
         SonosMediaPlayerEntity.async_search_media,
     )
-    hass.data[DOMAIN] = client
+    hass.data[DOMAIN] = RuntimeData(apple_music=client)
     async_install(hass)
     assert media_browser.async_browse_media is not before[0]
 
@@ -132,7 +133,7 @@ def test_install_is_idempotent(hass, client, sonos) -> None:
     """A second install must not capture the already-patched function as the
     original, which would leave the patch in place after remove."""
     before = media_browser.async_browse_media
-    hass.data[DOMAIN] = client
+    hass.data[DOMAIN] = RuntimeData(apple_music=client)
 
     async_install(hass)
     patched = media_browser.async_browse_media
@@ -237,6 +238,9 @@ async def test_a_favorite_settles_the_serial_and_clears_the_warning(
 
     assert issue(hass) is None
     assert "sn=2" in entity.enqueued[-1].resources[0].uri
+    # A household whose playback enqueues and stays silent has no other record
+    # of which serial that playback carried.
+    assert hass.data[DOMAIN].account_serial == 2
 
 
 async def test_play_delegates_anything_else(hass, installed) -> None:
@@ -291,10 +295,25 @@ async def test_a_failing_search_is_stated_rather_than_unknown(hass, client) -> N
     traceback in the log instead of a stated failure."""
     from homeassistant.components.media_player.errors import SearchError
 
-    hass.data[DOMAIN] = client
+    hass.data[DOMAIN] = RuntimeData(apple_music=client)
     client.responses["catalog/gb/search"] = AppleMusicError("Apple is down")
     async_install(hass)
 
     query = SearchMediaQuery(search_query="creep", media_content_id=f"{URI_PREFIX}root")
     with pytest.raises(SearchError, match="Apple is down"):
         await SonosMediaPlayerEntity.async_search_media(FakeEntity(hass), query)
+
+
+async def test_playing_after_the_entry_unloads_says_what_is_wrong(
+    hass, client, sonos
+) -> None:
+    """A patch outlives its entry by however long the removal takes to run."""
+    hass.data[DOMAIN] = RuntimeData(apple_music=client)
+    assert async_install(hass) is True
+    entity = FakeEntity(hass)
+    hass.data.pop(DOMAIN)
+
+    with pytest.raises(HomeAssistantError, match="not configured"):
+        await SonosMediaPlayerEntity.async_play_media(
+            entity, "music", f"{URI_PREFIX}song/{SONG_ID}"
+        )

@@ -276,6 +276,38 @@ retried — by the time a retry landed it would describe a moment that has passe
 — and a 409 on a `stop` means SIMKL already recorded that episode within the
 hour, which is success.
 
+### What it announces
+
+A scrobble that reaches SIMKL's history fires `sonos_apple_music_watched`,
+carrying the show, its numbering, the progress it finished at, the SIMKL id it
+resolved to and the player it was watched on. Only that moment is announced:
+starting and pausing are reported to SIMKL and nothing else.
+
+Whether an episode counts as watched is SIMKL's rule, not one applied here —
+`/scrobble/stop` marks it at 80% and saves a resume point below that — so the
+scrobble path stays free of any threshold. The event mirrors the same number so
+that what it announces is what SIMKL recorded, and it does not fire for a 409:
+that episode reached the history through some other call.
+
+`logbook.py` describes the event, so it reads as *SIMKL — marked Black Bird
+S01E04 watched* on the Apple TV's **own** logbook timeline. Asking a player what
+it has been playing is what its logbook is for, which is why this integration
+can surface its work without adding an entity to hold it.
+
+For a dashboard, a trigger-based template sensor needs nothing from here:
+
+```yaml
+template:
+  - trigger:
+      - trigger: event
+        event_type: sonos_apple_music_watched
+    sensor:
+      - name: Last watched
+        state: >-
+          {{ trigger.event.data.show }}
+          S{{ '%02d' % trigger.event.data.season }}E{{ '%02d' % trigger.event.data.episode }}
+```
+
 ## Where it patches
 
 | Integration | Concern | Seam |
@@ -312,6 +344,22 @@ speakers or the television down with it.
 Search needs `can_search=True` on the Apple Music nodes. The frontend shows its
 search input only on non-root pages that opt in, and Sonos sets the flag nowhere,
 which is why its browser otherwise has no search box at all.
+
+## Diagnostics
+
+The entry's **Download diagnostics** button answers the questions that otherwise
+need a shell on the Home Assistant host: whether each graft installed, whether
+the developer token scrape is holding and until when, which account serial the
+last browse read from a favorite, which players are being watched, and which
+SIMKL id each show resolved to.
+
+That last one is the failure this integration cannot see from the outside. A
+wrong id is accepted by SIMKL and the episode is filed under whichever show that
+id names, so the cache it came from is the only place the mistake is visible.
+
+Both tokens are redacted, so the file can go into an issue as it is. An entry
+that failed to set up still reports — it is the one most worth asking about, and
+what it was configured with is the answer it has.
 
 ## Testing
 

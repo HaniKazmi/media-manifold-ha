@@ -25,28 +25,28 @@ from homeassistant.util import dt as dt_util
 
 from . import playing
 from .api import SimklClient
-from .const import CONF_SIMKL_TOKEN
+from .const import CONF_SIMKL_TOKEN, EVENT_WATCHED, WATCHED_AT
 
 _LOGGER = logging.getLogger(__name__)
 
 APPLE_TV_DOMAIN = "apple_tv"
 
 
-def async_start(hass: HomeAssistant, entry: ConfigEntry) -> Callable[[], None]:
-    """Begin scrobbling, returning the callback that stops it.
+def async_start(hass: HomeAssistant, entry: ConfigEntry) -> Scrobbler | None:
+    """Begin scrobbling, or return None for a household that has not linked SIMKL.
 
-    A household with no SIMKL token gets a subscription to nothing, so linking
-    SIMKL is what turns this on and the rest of the integration is unaffected by
-    never linking it.
+    Linking is what turns this on, and the rest of the integration is unaffected
+    by never linking it: without a token nothing subscribes to anything.
     """
     if not (token := entry.data.get(CONF_SIMKL_TOKEN)):
-        return lambda: None
+        return None
 
-    scrobbler = _Scrobbler(hass, entry, SimklClient(hass, token))
-    return scrobbler.async_start()
+    scrobbler = Scrobbler(hass, entry, SimklClient(hass, token))
+    scrobbler.async_start()
+    return scrobbler
 
 
-class _Scrobbler:
+class Scrobbler:
     """One subscription to every Apple TV, and the client it reports through."""
 
     def __init__(
@@ -57,15 +57,26 @@ class _Scrobbler:
         self._client = client
         self._unsub_states: Callable[[], None] | None = None
         self._unsub_registry: Callable[[], None] | None = None
+        self._watching: list[str] = []
+
+    @property
+    def shows(self) -> dict[str, int]:
+        """The show ids resolved so far, for diagnostics."""
+        return self._client.shows
+
+    @property
+    def watching(self) -> list[str]:
+        """The players subscribed to. Empty is the answer to most of the
+        questions someone asks when nothing is being scrobbled."""
+        return list(self._watching)
 
     @callback
-    def async_start(self) -> Callable[[], None]:
+    def async_start(self) -> None:
         """Subscribe, and follow the registry so a new Apple TV is picked up."""
         self._unsub_registry = self._hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED, self._async_registry_changed
         )
         self._async_resubscribe()
-        return self.async_stop
 
     @callback
     def async_stop(self) -> None:
@@ -99,6 +110,7 @@ class _Scrobbler:
             self._unsub_states()
             self._unsub_states = None
 
+        self._watching = entity_ids
         if not entity_ids:
             _LOGGER.debug("No Apple TV media players to scrobble from yet")
             return
@@ -122,6 +134,31 @@ class _Scrobbler:
         for scrobble in scrobbles:
             self._entry.async_create_background_task(
                 self._hass,
-                self._client.async_scrobble(scrobble),
+                self._async_report(scrobble, event.data["entity_id"]),
                 f"simkl {scrobble.act} {scrobble.episode.show}",
             )
+
+    async def _async_report(self, scrobble: playing.Event, entity_id: str) -> None:
+        """Send one scrobble, and announce an episode that reached the history.
+
+        The announcement is the scrobbler's to make rather than the client's:
+        firing an event is a Home Assistant concern, and the player it was
+        watched on is known here and nowhere below.
+        """
+        if not await self._client.async_scrobble(scrobble):
+            return
+
+        if scrobble.act != "stop" or (scrobble.progress or 0) < WATCHED_AT:
+            return
+
+        self._hass.bus.async_fire(
+            EVENT_WATCHED,
+            {
+                "entity_id": entity_id,
+                "show": scrobble.episode.show,
+                "season": scrobble.episode.season,
+                "episode": scrobble.episode.number,
+                "progress": scrobble.progress,
+                "simkl_id": self._client.shows.get(scrobble.episode.show),
+            },
+        )

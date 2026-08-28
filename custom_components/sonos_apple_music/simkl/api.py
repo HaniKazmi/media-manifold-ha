@@ -54,11 +54,20 @@ class SimklClient:
         # with 429, so the three transitions of one episode are sent in turn.
         self._lock = asyncio.Lock()
 
-    async def async_scrobble(self, event: playing.Event) -> None:
-        """Report one transition, if the show can be named to SIMKL."""
+    @property
+    def shows(self) -> dict[str, int]:
+        """The ids resolved so far, for diagnostics.
+
+        A wrong id is the one failure invisible from outside: SIMKL accepts the
+        scrobble and files the episode under whichever show that id names.
+        """
+        return dict(self._show_ids)
+
+    async def async_scrobble(self, event: playing.Event) -> bool:
+        """Report one transition. True when SIMKL recorded *this* call."""
         show_id = await self.async_show_id(event.episode.show)
         if show_id is None:
-            return
+            return False
 
         payload: dict[str, Any] = {
             # `simkl`, not the `simkl_id` the search answers with: the write side
@@ -73,7 +82,7 @@ class SimklClient:
             payload["progress"] = event.progress
 
         async with self._lock:
-            await self._async_post(event, payload)
+            return await self._async_post(event, payload)
 
     async def async_show_id(self, title: str) -> int | None:
         """The SIMKL id for a show title, searched once and remembered.
@@ -107,8 +116,13 @@ class SimklClient:
         self._show_ids[title] = show_id
         return show_id
 
-    async def _async_post(self, event: playing.Event, payload: dict[str, Any]) -> None:
-        """Send one scrobble and read what SIMKL made of it."""
+    async def _async_post(self, event: playing.Event, payload: dict[str, Any]) -> bool:
+        """Send one scrobble and read what SIMKL made of it.
+
+        False covers every way a call can fail to add something new, the 409
+        included: that episode is on the history, but an earlier call put it
+        there, so anything announcing a fresh one would be announcing it twice.
+        """
         session = async_get_clientsession(self._hass)
         try:
             async with session.post(
@@ -121,29 +135,29 @@ class SimklClient:
                 body = await response.json(content_type=None) if status < 400 else None
         except (ClientError, TimeoutError, ValueError) as err:
             _LOGGER.debug("SIMKL %s for %s failed: %s", event.act, event.episode, err)
-            return
+            return False
 
         if status == HTTPStatus.CONFLICT:
             # SIMKL has recorded this episode within the hour and declines to do
             # it twice. The scrobble arrived; there is nothing to fix.
             _LOGGER.debug("SIMKL already has %s; %s ignored", event.episode, event.act)
-            return
+            return False
 
         if status == HTTPStatus.TOO_MANY_REQUESTS:
             # Not retried. By the time a retry landed it would describe a moment
             # that has passed, and the next transition says the same thing better.
             _LOGGER.debug("SIMKL rate-limited %s for %s", event.act, event.episode)
-            return
+            return False
 
         if status == HTTPStatus.UNAUTHORIZED:
             self._async_token_rejected()
-            return
+            return False
 
         if status >= 400:
             _LOGGER.debug(
                 "SIMKL answered %s to %s for %s", status, event.act, event.episode
             )
-            return
+            return False
 
         if not (isinstance(body, dict) and body.get("id")):
             _LOGGER.warning(
@@ -153,12 +167,11 @@ class SimklClient:
                 event.episode,
                 body,
             )
-            return
+            return False
 
-        _LOGGER.debug(
-            "SIMKL %s %s at %s%%", event.act, event.episode, event.progress
-        )
+        _LOGGER.debug("SIMKL %s %s at %s%%", event.act, event.episode, event.progress)
         ir.async_delete_issue(self._hass, DOMAIN, TOKEN_ISSUE)
+        return True
 
     def _async_token_rejected(self) -> None:
         """Raise a repair, rather than putting the whole entry into reauth.

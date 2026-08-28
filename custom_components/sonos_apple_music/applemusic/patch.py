@@ -60,7 +60,9 @@ _NO_FAVORITE_ISSUE = "no_apple_music_favorite"
 
 
 def _client(hass: HomeAssistant) -> AppleMusicClient | None:
-    return hass.data.get(DOMAIN)
+    if (runtime := hass.data.get(DOMAIN)) is None:
+        return None
+    return runtime.apple_music
 
 
 def async_install(hass: HomeAssistant) -> bool:
@@ -179,6 +181,7 @@ def _account_serial(hass: HomeAssistant, favorites: Any) -> int:
     """
     if (serial := discover_sn(favorites)) is not None:
         ir.async_delete_issue(hass, DOMAIN, _NO_FAVORITE_ISSUE)
+        _remember_serial(hass, serial)
         return serial
 
     ir.async_create_issue(
@@ -195,7 +198,19 @@ def _account_serial(hass: HomeAssistant, favorites: Any) -> int:
         "Music favorite in the Sonos app to fix this",
         DEFAULT_SN,
     )
+    _remember_serial(hass, DEFAULT_SN)
     return DEFAULT_SN
+
+
+def _remember_serial(hass: HomeAssistant, serial: int) -> None:
+    """Keep the serial a browse used, so diagnostics can report it.
+
+    Nothing else records it: it is rediscovered on every browse and used inline,
+    so a household whose playback enqueues and stays silent has no way to say
+    which serial that playback carried.
+    """
+    if (runtime := hass.data.get(DOMAIN)) is not None:
+        runtime.account_serial = serial
 
 
 def _make_play(original: Callable[..., Any]) -> Callable[..., Any]:

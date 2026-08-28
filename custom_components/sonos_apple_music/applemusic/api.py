@@ -12,6 +12,7 @@ useful when there is no user token or it has expired.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 import logging
 from typing import Any, NamedTuple
 
@@ -88,6 +89,11 @@ class AppleMusicClient:
     def has_user_token(self) -> bool:
         """Whether library endpoints can be reached."""
         return bool(self._user_token)
+
+    @property
+    def developer_token_expires_at(self) -> datetime | None:
+        """When the held developer token lapses, for diagnostics."""
+        return self._developer_token.expires_at
 
     def resource_path(self, resource: str, apple_id: str) -> str:
         """The endpoint for one Apple resource, library or catalog as its id says.

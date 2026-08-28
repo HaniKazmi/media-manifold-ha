@@ -12,6 +12,7 @@ import json
 import time
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.sonos_apple_music.applemusic.const import (
@@ -138,3 +139,17 @@ async def test_a_token_with_no_readable_expiry_is_still_cached(hass, exp) -> Non
         assert await token.async_get() == "t"
 
     assert scrape.call_count == 1
+
+
+async def test_the_expiry_is_readable_once_a_token_is_held(
+    token, aioclient_mock
+) -> None:
+    """Diagnostics reports it, and a scrape that never ran has none to report."""
+    expires = int(time.time()) + 90 * 86400
+    aioclient_mock.get(WEB_PLAYER_URL, text=PAGE)
+    aioclient_mock.get(BUNDLE_URL, text=bundle(jwt(DEV_TOKEN_ISSUER, expires)))
+
+    assert token.expires_at is None
+    await token.async_get()
+
+    assert token.expires_at == dt_util.utc_from_timestamp(expires)

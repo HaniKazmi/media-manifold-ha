@@ -27,6 +27,7 @@ from .applemusic.api import AppleMusicClient, UserTokenInvalid
 from .applemusic.const import CONF_STOREFRONT, CONF_USER_TOKEN, DEFAULT_STOREFRONT
 from .applemusic.dev_token import DeveloperToken, TokenError
 from .const import DOMAIN
+from .data import RuntimeData
 from .infuse import patch as infuse
 from .simkl import watch as simkl
 from .simkl.const import CONF_SIMKL_TOKEN
@@ -64,12 +65,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # only thing that fixes it.
         raise ConfigEntryAuthFailed(str(err)) from err
 
-    hass.data[DOMAIN] = client
+    runtime = RuntimeData(apple_music=client)
+    hass.data[DOMAIN] = runtime
 
     # Each graft is onto an integration that need not exist. Registering the
     # removal before the check matters: Home Assistant runs these callbacks on
     # the setup-failure path too, so nothing stays patched behind a raise.
-    grafted = {}
+    grafted = runtime.grafted
     for graft in GRAFTS:
         grafted[graft.NAME] = graft.async_install(hass)
         entry.async_on_unload(graft.async_remove)
@@ -85,7 +87,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"once one of them is"
         )
 
-    entry.async_on_unload(simkl.async_start(hass, entry))
+    if (scrobbler := simkl.async_start(hass, entry)) is not None:
+        runtime.scrobbler = scrobbler
+        entry.async_on_unload(scrobbler.async_stop)
+
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     _LOGGER.info(
         "Grafted onto %s; Apple Music storefront %s, library %s, SIMKL %s",

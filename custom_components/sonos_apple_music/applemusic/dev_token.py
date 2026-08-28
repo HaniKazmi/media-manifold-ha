@@ -14,6 +14,7 @@ can use it — which is why there is no in-browser sign-in flow here.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import logging
 import re
 import time
@@ -21,6 +22,7 @@ import time
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 import jwt
 
 from ..const import DOMAIN
@@ -93,6 +95,18 @@ class DeveloperToken:
         self._token: str | None = None
         self._expires: int = 0
         self._lock = asyncio.Lock()
+
+    @property
+    def expires_at(self) -> datetime | None:
+        """When the held token stops being usable, or None before one is held.
+
+        Read for diagnostics only. It is not the check any caller makes: the API
+        decides what it accepts, and `async_get` renews against `_expires` well
+        before this matters.
+        """
+        if not self._expires:
+            return None
+        return dt_util.utc_from_timestamp(self._expires)
 
     async def async_get(self, *, force_refresh: bool = False) -> str:
         """Return a usable developer token, scraping one if needed.

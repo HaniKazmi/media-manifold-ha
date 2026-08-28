@@ -138,7 +138,7 @@ async def test_a_cookie_rejected_later_asks_for_a_new_one(
     """
     await setup(hass, config_entry)
 
-    hass.data[DOMAIN]._on_token_invalid()
+    hass.data[DOMAIN].apple_music._on_token_invalid()
     await hass.async_block_till_done()
 
     assert [
@@ -190,16 +190,17 @@ async def test_the_scrobbler_is_started_and_stopped_with_the_entry(
     hass, config_entry, resolved_storefront
 ) -> None:
     """It hangs off the entry, not the grafts, so nothing else takes it down."""
-    stop = Mock()
-    with patch(SIMKL_WATCH, return_value=stop) as start:
+    scrobbler = Mock()
+    with patch(SIMKL_WATCH, return_value=scrobbler) as start:
         await setup(hass, config_entry)
         assert start.call_count == 1
-        stop.assert_not_called()
+        assert hass.data[DOMAIN].scrobbler is scrobbler
+        scrobbler.async_stop.assert_not_called()
 
         await hass.config_entries.async_unload(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    stop.assert_called_once()
+    scrobbler.async_stop.assert_called_once()
 
 
 async def test_the_scrobbler_is_not_started_when_no_graft_takes(

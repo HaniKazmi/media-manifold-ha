@@ -24,3 +24,13 @@ QUERY: Final = {
 
 # Where the user approves the code the PIN flow prints.
 PIN_URL: Final = "https://simkl.com/pin"
+
+# Fired when an episode reaches SIMKL's history, carrying the show, its
+# numbering, the progress it finished at and the player it was watched on.
+EVENT_WATCHED: Final = "sonos_apple_music_watched"
+
+# SIMKL's own published rule: a `stop` at or above this marks the episode
+# watched, and below it saves a resumable playback instead. The rule is applied
+# on their side, so nothing in the scrobble path consults this — it exists only
+# so the event above can be fired for the same episodes SIMKL counts.
+WATCHED_AT: Final = 80
