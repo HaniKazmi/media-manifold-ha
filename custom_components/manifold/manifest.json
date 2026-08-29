@@ -10,10 +10,10 @@
     "@HaniKazmi"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/HaniKazmi/media-manifold",
+  "documentation": "https://github.com/HaniKazmi/media-manifold-ha",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/HaniKazmi/media-manifold/issues",
+  "issue_tracker": "https://github.com/HaniKazmi/media-manifold-ha/issues",
   "requirements": [],
   "single_config_entry": true,
   "version": "1.0.0"
