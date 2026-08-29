@@ -378,3 +378,18 @@ async def test_a_code_simkl_will_not_exchange_is_replaced(hass, aioclient_mock) 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
     assert result["description_placeholders"]["code"] == "FRESH"
+
+
+async def test_the_entry_is_named_for_the_integration(hass) -> None:
+    """The flow signs off with "Created configuration for <title>", so it is read.
+
+    The conftest fixture builds an entry with this name too, and nothing else
+    compares the two, so a title that drifts from it goes unnoticed.
+    """
+    result = await start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USER_TOKEN: "", CONF_STOREFRONT: "gb"}
+    )
+    result = await skip_simkl(hass, result)
+
+    assert result["title"] == "Media Manifold"

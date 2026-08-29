@@ -166,7 +166,7 @@ class ManifoldConfigFlow(ConfigFlow, domain=DOMAIN):
                 data_updates={CONF_SIMKL_TOKEN: simkl_token},
             )
         return self.async_create_entry(
-            title="Apple Music", data={**self._data, CONF_SIMKL_TOKEN: simkl_token}
+            title="Media Manifold", data={**self._data, CONF_SIMKL_TOKEN: simkl_token}
         )
 
     async def async_step_reauth(
