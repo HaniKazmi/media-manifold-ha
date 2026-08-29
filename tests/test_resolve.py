@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.sonos_apple_music.applemusic.const import URI_PREFIX, is_library_id
-from custom_components.sonos_apple_music.applemusic.resolve import (
-    NotPlayable,
-    async_build_item,
-)
+from custom_components.manifold.applemusic.const import URI_PREFIX, is_library_id
+from custom_components.manifold.applemusic.resolve import NotPlayable, async_build_item
 
 from .conftest import ALBUM_ID, ARTIST_ID, PLAYLIST_ID, SONG_ID, STATION_ID, song
 
@@ -133,7 +130,7 @@ async def test_a_station_needs_no_translation(client) -> None:
 
 async def test_a_station_plays_even_if_its_title_cannot_be_read(client) -> None:
     """The title is cosmetic; failing to fetch it must not block playback."""
-    from custom_components.sonos_apple_music.applemusic.api import AppleMusicError
+    from custom_components.manifold.applemusic.api import AppleMusicError
 
     client.responses[f"catalog/gb/stations/{STATION_ID}"] = AppleMusicError("nope", 500)
     item = await async_build_item(client, f"{URI_PREFIX}station/{STATION_ID}", sn=2)

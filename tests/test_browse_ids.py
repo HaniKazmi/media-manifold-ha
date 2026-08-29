@@ -15,15 +15,12 @@ import pathlib
 
 import pytest
 
-from custom_components.sonos_apple_music.applemusic.browse import (
-    _ARTIST_VIEWS,
-    ITEM_KINDS,
-)
+from custom_components.manifold.applemusic.browse import _ARTIST_VIEWS, ITEM_KINDS
 
 SOURCE = (
     pathlib.Path(__file__).resolve().parent.parent
     / "custom_components"
-    / "sonos_apple_music"
+    / "manifold"
     / "applemusic"
     / "browse.py"
 )

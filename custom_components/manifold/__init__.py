@@ -1,4 +1,4 @@
-"""Sources grafted onto media players that already exist.
+"""Wiring between the media players a household has and the services around them.
 
 Two grafts, each onto an integration Home Assistant ships: Apple Music into the
 Sonos media browser, and Jellyfin onto the Apple TV by way of Infuse. Neither

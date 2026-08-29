@@ -28,14 +28,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 import pytest
 
-from custom_components.sonos_apple_music.applemusic.api import AppleMusicError
-from custom_components.sonos_apple_music.applemusic.const import DEFAULT_SN, URI_PREFIX
-from custom_components.sonos_apple_music.applemusic.patch import (
-    async_install,
-    async_remove,
-)
-from custom_components.sonos_apple_music.const import DOMAIN
-from custom_components.sonos_apple_music.data import RuntimeData
+from custom_components.manifold.applemusic.api import AppleMusicError
+from custom_components.manifold.applemusic.const import DEFAULT_SN, URI_PREFIX
+from custom_components.manifold.applemusic.patch import async_install, async_remove
+from custom_components.manifold.const import DOMAIN
+from custom_components.manifold.data import RuntimeData
 
 from .conftest import ALBUM_ID, APPLE_FAVORITE, SONG_ID, FakeFavorite, FakeSoco
 

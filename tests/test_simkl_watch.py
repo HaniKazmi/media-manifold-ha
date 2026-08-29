@@ -17,14 +17,14 @@ from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import async_capture_events
 
-from custom_components.sonos_apple_music.const import DOMAIN
-from custom_components.sonos_apple_music.simkl.const import (
+from custom_components.manifold.const import DOMAIN
+from custom_components.manifold.simkl.const import (
     CONF_SIMKL_TOKEN,
     EVENT_WATCHED,
     TOKEN_ISSUE,
     WATCHED_AT,
 )
-from custom_components.sonos_apple_music.simkl.watch import async_start
+from custom_components.manifold.simkl.watch import async_start
 
 from .conftest import APPLE_TV_ATTRIBUTES, SHOW_ID, add_player, scrobble_url, simkl_finds
 

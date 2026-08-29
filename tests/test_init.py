@@ -13,14 +13,14 @@ from homeassistant.components.sonos import media_browser
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 import pytest
 
-from custom_components.sonos_apple_music.applemusic.api import UserTokenInvalid
-from custom_components.sonos_apple_music.applemusic.dev_token import TokenError
-from custom_components.sonos_apple_music.const import DOMAIN
-from custom_components.sonos_apple_music.simkl.const import CONF_SIMKL_TOKEN
+from custom_components.manifold.applemusic.api import UserTokenInvalid
+from custom_components.manifold.applemusic.dev_token import TokenError
+from custom_components.manifold.const import DOMAIN
+from custom_components.manifold.simkl.const import CONF_SIMKL_TOKEN
 
-SONOS_GRAFT = "custom_components.sonos_apple_music.applemusic.patch.async_install"
-INFUSE_GRAFT = "custom_components.sonos_apple_music.infuse.patch.async_install"
-SIMKL_WATCH = "custom_components.sonos_apple_music.simkl.watch.async_start"
+SONOS_GRAFT = "custom_components.manifold.applemusic.patch.async_install"
+INFUSE_GRAFT = "custom_components.manifold.infuse.patch.async_install"
+SIMKL_WATCH = "custom_components.manifold.simkl.watch.async_start"
 
 
 async def setup(hass, config_entry) -> None:
@@ -174,7 +174,7 @@ def test_the_package_imports_without_what_it_grafts_onto(absent: str) -> None:
                 return None
 
         sys.meta_path.insert(0, Blocker())
-        import custom_components.sonos_apple_music.config_flow  # noqa: F401
+        import custom_components.manifold.config_flow  # noqa: F401
         """
     )
     result = subprocess.run(

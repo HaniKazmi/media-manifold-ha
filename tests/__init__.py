@@ -1,1 +1,1 @@
-"""Tests for the Apple Music for Sonos integration."""
+"""Tests for the Media Manifold integration."""

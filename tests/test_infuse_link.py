@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from custom_components.sonos_apple_music.infuse.link import (
+from custom_components.manifold.infuse.link import (
     TICKS_PER_SECOND,
     deep_link,
     direct_play,

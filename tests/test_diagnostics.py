@@ -8,8 +8,8 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
 
-from custom_components.sonos_apple_music.applemusic.const import CONF_USER_TOKEN
-from custom_components.sonos_apple_music.simkl.const import CONF_SIMKL_TOKEN
+from custom_components.manifold.applemusic.const import CONF_USER_TOKEN
+from custom_components.manifold.simkl.const import CONF_SIMKL_TOKEN
 
 from .conftest import (
     APPLE_TV_ATTRIBUTES,
@@ -111,11 +111,11 @@ async def test_an_entry_that_failed_setup_still_reports(
     config_entry.add_to_hass(hass)
     with (
         patch(
-            "custom_components.sonos_apple_music.applemusic.patch.async_install",
+            "custom_components.manifold.applemusic.patch.async_install",
             return_value=False,
         ),
         patch(
-            "custom_components.sonos_apple_music.infuse.patch.async_install",
+            "custom_components.manifold.infuse.patch.async_install",
             return_value=False,
         ),
     ):

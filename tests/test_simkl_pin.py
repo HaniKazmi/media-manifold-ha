@@ -9,11 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.sonos_apple_music.simkl.pin import (
-    PinError,
-    async_poll,
-    async_request_code,
-)
+from custom_components.manifold.simkl.pin import PinError, async_poll, async_request_code
 
 CODE = "https://api.simkl.com/oauth/pin"
 POLL = "https://api.simkl.com/oauth/pin/ABCDE"

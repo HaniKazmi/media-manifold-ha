@@ -45,7 +45,7 @@ jobs:
       - name: Run tests
         run: >
           pytest
-          --cov=custom_components.sonos_apple_music
+          --cov=custom_components.manifold
           --cov-report=term-missing
           --cov-fail-under=85
 

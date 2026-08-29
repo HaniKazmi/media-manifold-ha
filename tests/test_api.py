@@ -14,24 +14,21 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMockResponse,
 )
 
-from custom_components.sonos_apple_music.applemusic.api import (
+from custom_components.manifold.applemusic.api import (
     _KNOWN_PAGE_LIMITS,
     AppleMusicClient,
     AppleMusicError,
     UserTokenInvalid,
     artwork_url,
 )
-from custom_components.sonos_apple_music.applemusic.const import (
+from custom_components.manifold.applemusic.const import (
     API_BASE,
     ORIGIN,
     PAGE_SIZE,
     RECENT_PAGE_SIZE,
     SAFE_PAGE_SIZE,
 )
-from custom_components.sonos_apple_music.applemusic.dev_token import (
-    DeveloperToken,
-    TokenError,
-)
+from custom_components.manifold.applemusic.dev_token import DeveloperToken, TokenError
 
 SEARCH = f"{API_BASE}/catalog/gb/search"
 

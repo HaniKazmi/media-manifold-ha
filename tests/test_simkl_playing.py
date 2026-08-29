@@ -12,12 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from custom_components.sonos_apple_music.simkl.playing import (
-    Episode,
-    episode,
-    events,
-    progress,
-)
+from custom_components.manifold.simkl.playing import Episode, episode, events, progress
 
 NOW = datetime(2026, 8, 26, 22, 20, 0, tzinfo=timezone.utc)
 

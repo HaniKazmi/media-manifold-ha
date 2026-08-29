@@ -7,17 +7,11 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.sonos_apple_music.applemusic.api import (
-    AppleMusicError,
-    UserTokenInvalid,
-)
-from custom_components.sonos_apple_music.applemusic.const import (
-    CONF_STOREFRONT,
-    CONF_USER_TOKEN,
-)
-from custom_components.sonos_apple_music.applemusic.dev_token import TokenError
-from custom_components.sonos_apple_music.const import DOMAIN
-from custom_components.sonos_apple_music.simkl.const import CONF_SIMKL_TOKEN, PIN_URL
+from custom_components.manifold.applemusic.api import AppleMusicError, UserTokenInvalid
+from custom_components.manifold.applemusic.const import CONF_STOREFRONT, CONF_USER_TOKEN
+from custom_components.manifold.applemusic.dev_token import TokenError
+from custom_components.manifold.const import DOMAIN
+from custom_components.manifold.simkl.const import CONF_SIMKL_TOKEN, PIN_URL
 
 from .conftest import USER_TOKEN
 
@@ -31,7 +25,7 @@ async def start(hass):
 def answering(*, storefront: str = "gb", error: Exception | None = None):
     """Stand in for the one library request the flow makes to check the token."""
     return patch(
-        "custom_components.sonos_apple_music.applemusic.api.AppleMusicClient.get",
+        "custom_components.manifold.applemusic.api.AppleMusicClient.get",
         AsyncMock(side_effect=error, return_value={"data": [{"id": storefront}]}),
     )
 

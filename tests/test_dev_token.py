@@ -15,11 +15,8 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.util import dt as dt_util
 import pytest
 
-from custom_components.sonos_apple_music.applemusic.const import (
-    DEV_TOKEN_ISSUER,
-    WEB_PLAYER_URL,
-)
-from custom_components.sonos_apple_music.applemusic.dev_token import (
+from custom_components.manifold.applemusic.const import DEV_TOKEN_ISSUER, WEB_PLAYER_URL
+from custom_components.manifold.applemusic.dev_token import (
     DeveloperToken,
     TokenError,
     _expiry_of,

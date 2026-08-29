@@ -54,7 +54,7 @@ _SCHEMA = vol.Schema(
 _REAUTH_SCHEMA = vol.Schema(_TOKEN_FIELD)
 
 
-class AppleMusicConfigFlow(ConfigFlow, domain=DOMAIN):
+class ManifoldConfigFlow(ConfigFlow, domain=DOMAIN):
     """Collect the optional credentials and confirm each service is reachable."""
 
     VERSION = 1

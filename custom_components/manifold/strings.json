@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Apple Music for Sonos",
+        "title": "Apple Music",
         "description": "Catalog search and playback work straight away. To browse your own library and playlists, paste the `media-user-token` cookie from a signed-in music.apple.com session (browser devtools → Application → Cookies). Leave it empty to skip.",
         "data": {
           "music_user_token": "Music user token (optional)",
@@ -10,7 +10,7 @@
         }
       },
       "reauth_confirm": {
-        "title": "Apple Music for Sonos",
+        "title": "Apple Music",
         "description": "Apple has rejected the stored music user token, so your library, recently played and recommendations are unavailable. Paste a fresh `media-user-token` cookie from a signed-in music.apple.com session (browser devtools → Application → Cookies). Leave it empty to drop library access and keep catalog search, charts, radio and playback.",
         "data": {
           "music_user_token": "Music user token"
@@ -37,8 +37,8 @@
       "simkl_unreachable": "Could not reach SIMKL. Apple Music is unaffected; try again once the connection is back, and a fresh code will be issued."
     },
     "abort": {
-      "single_instance_allowed": "Apple Music for Sonos is already configured.",
-      "reauth_successful": "Apple Music for Sonos is set up again.",
+      "single_instance_allowed": "Media Manifold is already configured.",
+      "reauth_successful": "Apple Music is set up again.",
       "reconfigure_successful": "SIMKL scrobbling has been updated."
     }
   },

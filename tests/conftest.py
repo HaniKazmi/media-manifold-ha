@@ -1,4 +1,4 @@
-"""Fixtures for Apple Music for Sonos tests."""
+"""Fixtures for the Media Manifold tests."""
 
 from __future__ import annotations
 
@@ -14,14 +14,11 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
 )
 from soco.data_structures import DidlResource
 
-from custom_components.sonos_apple_music.applemusic import patch as applemusic_patch
-from custom_components.sonos_apple_music.applemusic.api import AppleMusicClient, Page
-from custom_components.sonos_apple_music.applemusic.const import (
-    CONF_STOREFRONT,
-    CONF_USER_TOKEN,
-)
-from custom_components.sonos_apple_music.const import DOMAIN
-from custom_components.sonos_apple_music.infuse import patch as infuse_patch
+from custom_components.manifold.applemusic import patch as applemusic_patch
+from custom_components.manifold.applemusic.api import AppleMusicClient, Page
+from custom_components.manifold.applemusic.const import CONF_STOREFRONT, CONF_USER_TOKEN
+from custom_components.manifold.const import DOMAIN
+from custom_components.manifold.infuse import patch as infuse_patch
 
 USER_TOKEN = "A" * 40 + "=="
 STOREFRONT = "gb"
@@ -76,7 +73,7 @@ def no_token_scraping():
     the shape of their JS bundle.
     """
     with patch(
-        "custom_components.sonos_apple_music.applemusic.dev_token.DeveloperToken.async_get",
+        "custom_components.manifold.applemusic.dev_token.DeveloperToken.async_get",
         AsyncMock(return_value="developer-token"),
     ) as mocked:
         yield mocked
@@ -346,7 +343,7 @@ class FakeSoco:
 def resolved_storefront():
     """Answer the storefront lookup without reaching Apple."""
     with patch(
-        "custom_components.sonos_apple_music.applemusic.api.AppleMusicClient.async_resolve_storefront",
+        "custom_components.manifold.applemusic.api.AppleMusicClient.async_resolve_storefront",
         AsyncMock(return_value=STOREFRONT),
     ) as mocked:
         yield mocked
@@ -356,7 +353,7 @@ def resolved_storefront():
 def config_entry() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
-        title="Apple Music",
+        title="Media Manifold",
         data={CONF_USER_TOKEN: USER_TOKEN, CONF_STOREFRONT: STOREFRONT},
     )
 

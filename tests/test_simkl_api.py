@@ -19,8 +19,8 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMockResponse,
 )
 
-from custom_components.sonos_apple_music.simkl.api import Result, SimklClient
-from custom_components.sonos_apple_music.simkl.playing import Episode, Event
+from custom_components.manifold.simkl.api import Result, SimklClient
+from custom_components.manifold.simkl.playing import Episode, Event
 
 from .conftest import SHOW_ID, SIMKL_SEARCH, scrobble_url, sent, simkl_finds
 

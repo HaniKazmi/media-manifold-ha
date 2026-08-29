@@ -1,20 +1,26 @@
-# Apple Music for Sonos, Jellyfin for Apple TV
+# Media Manifold
 
-Two sources grafted onto media players Home Assistant already has: Apple Music
-browsing, search and playback in the Sonos media browser, and Jellyfin playback
-on an Apple TV by way of Infuse. Both wrap core integrations rather than forking
-them, and neither adds an entity — the players a household already has gain a
-source, rather than a duplicate that has to be kept in step with the real one.
+Wiring between the media players a household already has and the services around
+them. Nothing here replaces a player: the ones you own gain sources, and what
+they play is reported onward.
 
-A third thing rides along and grafts onto nothing: playback in the Apple TV's
-own app can be scrobbled to [SIMKL](https://simkl.com), which needs no seam at
-all because Home Assistant already publishes every state the television reaches.
+Three things so far.
 
-Either graft works without the other: a household with only one of those players
-sets up normally, and a graft that cannot install leaves its integration
-untouched. They do share one config entry, though, so an Apple Music failure
-that puts the entry into retry — an unreachable Apple, a changed web player —
-holds the Apple TV graft back with it until it clears.
+- **Apple Music in the Sonos media browser** — browsing, search and playback,
+  grafted onto the seams of the core `sonos` integration.
+- **Jellyfin on an Apple TV, by way of Infuse** — grafted onto `apple_tv`, using
+  the Jellyfin credentials the core integration already holds.
+- **Apple TV playback scrobbled to [SIMKL](https://simkl.com)** — which grafts
+  onto nothing, because Home Assistant already publishes every state the
+  television reaches.
+
+Neither graft adds an entity: the players a household already has gain a source,
+rather than a duplicate that has to be kept in step with the real one. Each works
+without the other, and one that cannot install leaves its integration untouched.
+They do share one config entry, though, so an Apple Music failure that puts the
+entry into retry — an unreachable Apple, a changed web player — holds the Apple
+TV graft back with it until it clears. Scrobbling is the exception: it depends on
+neither seam, so it runs even when both decline.
 
 ## Installing
 
@@ -287,7 +293,7 @@ hour, which is success.
 
 ### What it announces
 
-A scrobble that reaches SIMKL's history fires `sonos_apple_music_watched`,
+A scrobble that reaches SIMKL's history fires `manifold_watched`,
 carrying the show, its numbering, the progress it finished at, the SIMKL id it
 resolved to and the player it was watched on. Only that moment is announced:
 starting and pausing are reported to SIMKL and nothing else.
@@ -311,7 +317,7 @@ For a dashboard, a trigger-based template sensor needs nothing from here:
 template:
   - trigger:
       - trigger: event
-        event_type: sonos_apple_music_watched
+        event_type: manifold_watched
     sensor:
       - name: Last watched
         state: >-

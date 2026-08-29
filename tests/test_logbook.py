@@ -20,8 +20,8 @@ from homeassistant.components.logbook import (
 from homeassistant.core import Event
 from homeassistant.loader import async_get_integration
 
-from custom_components.sonos_apple_music.const import DOMAIN
-from custom_components.sonos_apple_music.simkl.const import EVENT_WATCHED
+from custom_components.manifold.const import DOMAIN
+from custom_components.manifold.simkl.const import EVENT_WATCHED
 
 WATCHED = {
     "entity_id": "media_player.appletv",

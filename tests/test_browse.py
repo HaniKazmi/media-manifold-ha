@@ -5,15 +5,15 @@ from __future__ import annotations
 from homeassistant.components.media_player import BrowseError, MediaClass
 import pytest
 
-from custom_components.sonos_apple_music.applemusic.api import AppleMusicError
-from custom_components.sonos_apple_music.applemusic.browse import (
+from custom_components.manifold.applemusic.api import AppleMusicError
+from custom_components.manifold.applemusic.browse import (
     ROOT_ID,
     async_browse,
     async_search,
     parse_content_id,
     root_payload,
 )
-from custom_components.sonos_apple_music.applemusic.const import URI_PREFIX
+from custom_components.manifold.applemusic.const import URI_PREFIX
 
 from .conftest import (
     ALBUM_ID,

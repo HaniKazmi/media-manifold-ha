@@ -22,13 +22,13 @@ from homeassistant.exceptions import HomeAssistantError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.sonos_apple_music.infuse.link import TICKS_PER_SECOND
-from custom_components.sonos_apple_music.infuse.patch import (
+from custom_components.manifold.infuse.link import TICKS_PER_SECOND
+from custom_components.manifold.infuse.patch import (
     URI_PREFIX,
     async_install,
     async_remove,
 )
-from custom_components.sonos_apple_music.infuse.resolve import JELLYFIN_DOMAIN
+from custom_components.manifold.infuse.resolve import JELLYFIN_DOMAIN
 
 MOVIE_ID = "0f3a1c"
 EPISODE_ID = "9b2d4e"

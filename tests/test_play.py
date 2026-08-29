@@ -14,8 +14,8 @@ from homeassistant.components.media_player import MediaPlayerEnqueue
 import pytest
 from soco.data_structures import to_didl_string
 
-from custom_components.sonos_apple_music.applemusic.const import CDUDN, SONOS_SERVICE_TYPE
-from custom_components.sonos_apple_music.applemusic.play import (
+from custom_components.manifold.applemusic.const import CDUDN, SONOS_SERVICE_TYPE
+from custom_components.manifold.applemusic.play import (
     build_container,
     build_station,
     build_track,

@@ -1,6 +1,6 @@
 {
-  "domain": "sonos_apple_music",
-  "name": "Apple Music for Sonos, Jellyfin for Apple TV",
+  "domain": "manifold",
+  "name": "Media Manifold",
   "after_dependencies": [
     "apple_tv",
     "jellyfin",
@@ -10,10 +10,10 @@
     "@HaniKazmi"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/HaniKazmi/sonos_applemusic",
+  "documentation": "https://github.com/HaniKazmi/media-manifold",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/HaniKazmi/sonos_applemusic/issues",
+  "issue_tracker": "https://github.com/HaniKazmi/media-manifold/issues",
   "requirements": [],
   "single_config_entry": true,
   "version": "1.0.0"
