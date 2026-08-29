@@ -1,0 +1,64 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "Europe/London",
+  "schedule": [
+    "* 0-6 * * 0"
+  ],
+  "description": [
+    "Weekly. pytest-homeassistant-custom-component follows Home Assistant's own release cadence and publishes several times a week, so a daily run raises the same upgrade repeatedly before anyone has looked at the first one.",
+    "Nothing automerges. The suite does exercise the real Sonos and apple_tv modules, so a green run is genuine evidence for ruff and for the actions — but it is the same suite either side of a Home Assistant bump, and what that bump changes is the seam being tested, which is exactly what a passing run cannot speak to."
+  ],
+  "automerge": false,
+  "packageRules": [
+    {
+      "description": "These are not this project's dependencies. requirements_test.txt pins them to whatever Home Assistant pins, because importing homeassistant.components.sonos pulls the whole chain and the DIDL assertions are only meaningful against the soco a speaker actually receives bytes from. Taking the newest release from PyPI would test a stack no install has: the tests would keep passing while proving less. They move when the Home Assistant pin below moves, by reading what that release pins, which is not a thing Renovate can see.",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "matchPackageNames": [
+        "soco",
+        "sonos-websocket",
+        "defusedxml",
+        "async-upnp-client",
+        "ifaddr",
+        "spotifyaio",
+        "PlexAPI",
+        "plexauth",
+        "plexwebsocket",
+        "pyatv"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "This one pin is the Home Assistant upgrade: the package pulls Home Assistant in, so its version decides which core the grafts are patched onto and which apple_tv module the seams are read from. It gets its own pull request, never grouped, because the diff is one line and the review is the release notes of a different project.",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "matchPackageNames": [
+        "pytest-homeassistant-custom-component"
+      ],
+      "groupName": null,
+      "separateMinorPatch": true
+    },
+    {
+      "description": "ruff is pinned so that `ruff check` means the same thing run to run; its default rule set moves between releases. An upgrade that fails CI is a rule set that changed, which is the thing worth knowing.",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "matchPackageNames": [
+        "ruff"
+      ],
+      "groupName": "ruff"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions"
+    }
+  ],
+  "configMigration": true
+}
