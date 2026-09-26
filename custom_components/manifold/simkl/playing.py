@@ -1,7 +1,14 @@
 """What an Apple TV media player state says about an episode.
 
 The native Apple TV app names what it is playing in two halves. ``media_title``
-carries the show, and the numbering is inside ``media_content_id``:
+carries the show, and the numbering arrives one of two ways.
+
+The first is ``media_season`` and ``media_episode``, filled in by this
+integration's own graft on the Apple TV entity from the app's now-playing
+archive (see ``appletv/nowplaying.py``). These are the public numbers, the ones
+the iOS Remote shows, and they are preferred whenever both are present.
+
+The second is inside ``media_content_id``::
 
     A 00544 01 004   ->  Black Bird, season 1, episode 4
     │ │     │  └── episode, three digits
@@ -9,13 +16,21 @@ carries the show, and the numbering is inside ``media_content_id``:
     │ └─────────── a per-show prefix, stable across sessions
     └───────────── literal A
 
-pyatv reports none of ``media_series_title``, ``media_season`` or
-``media_episode`` for this app, so the id is the only place the numbering exists.
+That slice is right for a show shot one season at a time and wrong for one shot
+in blocks: Slow Horses season 6 arrives as ``A0006403008``, block 3 and its
+eighth episode, which the slice reads as season 3, episode 8. It is the
+fallback for a state the graft could not fill — the graft declined to install,
+or the app played something without the archive.
 
-That eleven-character shape is also the gate. Apple Music on the same television
-(``com.apple.TVMusic``) and Infuse (``com.firecore.infuse``) report no content id
-at all, so requiring one keeps both out — Infuse deliberately, since a Jellyfin
-webhook scrobbles that side and a second reporter would race it.
+The eleven-character id is the gate for both routes, whichever supplies the
+numbers. It is what marks the item as one of the app's own episodes, whose
+``media_title`` is the show; anything the app plays without such an id could
+carry a season and an episode beside a title that names something else, and
+SIMKL is searched by that title. Apple Music on the same television
+(``com.apple.TVMusic``) shares the ``com.apple.TV`` prefix but reports no id of
+that shape, and Infuse (``com.firecore.infuse``) fails the prefix outright —
+deliberately, since a Jellyfin webhook scrobbles that side and a second
+reporter would race it.
 
 This module imports nothing from Home Assistant: every rule is checkable against
 a plain object carrying ``state`` and ``attributes``.
@@ -89,7 +104,20 @@ def episode(state: State | None) -> Episode | None:
     if not (show := attributes.get("media_title")):
         return None
 
-    return Episode(show, int(content_id[6:8]), int(content_id[8:11]))
+    season, number = _from_attributes(attributes) or (
+        int(content_id[6:8]),
+        int(content_id[8:11]),
+    )
+    return Episode(show, season, number)
+
+
+def _from_attributes(attributes: Mapping[str, Any]) -> tuple[int, int] | None:
+    """The numbering the graft wrote, which Home Assistant carries as strings."""
+    try:
+        return int(attributes.get("media_season")), int(attributes.get("media_episode"))
+    except (TypeError, ValueError):
+        # Absent, or not a number: both mean the graft wrote nothing usable.
+        return None
 
 
 def progress(state: State, now: datetime) -> float | None:

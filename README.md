@@ -10,17 +10,20 @@ Three things so far.
   grafted onto the seams of the core `sonos` integration.
 - **Jellyfin on an Apple TV, by way of Infuse** — grafted onto `apple_tv`, using
   the Jellyfin credentials the core integration already holds.
+- **The Apple TV app's real episode numbering** — grafted onto the `apple_tv`
+  entity, which otherwise reports no season or episode for that app at all.
 - **Apple TV playback scrobbled to [SIMKL](https://simkl.com)** — which grafts
   onto nothing, because Home Assistant already publishes every state the
   television reaches.
 
-Neither graft adds an entity: the players a household already has gain a source,
-rather than a duplicate that has to be kept in step with the real one. Each works
-without the other, and one that cannot install leaves its integration untouched.
-They do share one config entry, though, so an Apple Music failure that puts the
-entry into retry — an unreachable Apple, a changed web player — holds the Apple
-TV graft back with it until it clears. Scrobbling is the exception: it depends on
-neither seam, so it runs even when both decline.
+No graft adds an entity: the players a household already has gain a source, or
+an attribute, rather than a duplicate that has to be kept in step with the real
+one. Each works without the others, and one that cannot install leaves its
+integration untouched. They do share one config entry, though, so an Apple Music
+failure that puts the entry into retry — an unreachable Apple, a changed web
+player — holds the Apple TV grafts back with it until it clears. Scrobbling is
+the exception: it depends on no seam, so it runs even when every graft
+declines.
 
 ## Installing
 
@@ -220,10 +223,20 @@ Only the Apple TV's own app is scrobbled. Infuse playback is deliberately left
 alone: a Jellyfin webhook already reports it, and a second reporter would race
 that one for the same episode.
 
-What makes the two separable is the same thing that makes the app's playback
-readable at all. The native app reports an eleven-character `media_content_id`
-and Infuse reports none, so requiring one is both the gate and the source of the
-numbering:
+Two things gate a state: an `app_id` starting with `com.apple.TV`, and the
+eleven-character `media_content_id` below, which is what marks the item as one
+of the app's own episodes. The show's name comes from `media_title`, and the
+numbering from one of two places.
+
+**The graft's attributes, when it filled them.** pyatv reads its season and
+episode from plain fields the TV app leaves empty, but the app does send them,
+inside a binary now-playing archive pyatv carries without decoding. The graft
+decodes that archive and fills `media_season` and `media_episode` on the entity
+whenever pyatv has nothing of its own. These are the public numbers, the ones
+the iOS Remote shows, and they are preferred whenever both are present.
+
+**The content id, otherwise.** The native app reports an eleven-character
+`media_content_id` which encodes a numbering of its own:
 
 ```
 A 00544 01 004     ->  Black Bird, season 1, episode 4
@@ -233,11 +246,24 @@ A 00544 01 004     ->  Black Bird, season 1, episode 4
 └───────────── literal A
 ```
 
-pyatv populates none of `media_series_title`, `media_season` or `media_episode`
-for this app, so that id is the only place the numbering exists. The show's name
-comes from `media_title`. Apple Music on the same television shares the
-`com.apple.TV` prefix and also reports no content id, so it is excluded by the
-same rule.
+That slice is right for a show shot one season at a time and wrong for one shot
+in blocks. Slow Horses season 6 arrives as `A0006403008`: the season digits
+count production blocks, and that show is shot two seasons at a time, so the
+slice reads season 3, episode 8 — an episode that does not exist. The archive
+says season 6, episode 2. The slice remains as the fallback for a state the
+graft could not fill: pyatv absent, a seam moved upstream, or something played
+in the app without the archive.
+
+The id gates both routes, whichever supplies the numbers: anything the app plays
+without one could carry a season and an episode beside a title that names an
+episode rather than a show, and SIMKL is searched by that title. Apple Music on
+the same television shares the `com.apple.TV` prefix but reports no id of that
+shape, so it is excluded. Infuse fails the prefix outright.
+
+The archive is decoded from the entity's live pyatv state, which is what makes
+the recorder the place to look when a show scrobbles under the wrong episode:
+`media_season` and `media_episode` are recorded attributes, so the history shows
+which of the two sources each state carried.
 
 Three transitions are reported, and one state change can produce two of them:
 playing on into the next episode ends one and begins another, and a `start`

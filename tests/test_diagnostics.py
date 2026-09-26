@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
@@ -17,6 +15,7 @@ from .conftest import (
     STOREFRONT,
     USER_TOKEN,
     add_player,
+    no_grafts,
     scrobble_url,
     simkl_finds,
 )
@@ -55,7 +54,11 @@ async def test_it_says_which_grafts_installed(
 
     report = await get_diagnostics_for_config_entry(hass, hass_client, config_entry)
 
-    assert report["grafts"] == {"Sonos": True, "Apple TV": True}
+    assert report["grafts"] == {
+        "Sonos": True,
+        "Apple TV": True,
+        "Apple TV numbering": True,
+    }
 
 
 async def test_it_reports_the_apple_music_state(
@@ -109,16 +112,7 @@ async def test_an_entry_that_failed_setup_still_reports(
 ) -> None:
     """That entry is the one most worth asking about, and it has no runtime."""
     config_entry.add_to_hass(hass)
-    with (
-        patch(
-            "custom_components.manifold.applemusic.patch.async_install",
-            return_value=False,
-        ),
-        patch(
-            "custom_components.manifold.infuse.patch.async_install",
-            return_value=False,
-        ),
-    ):
+    with no_grafts():
         await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 

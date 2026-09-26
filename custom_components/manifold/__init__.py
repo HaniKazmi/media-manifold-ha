@@ -1,17 +1,20 @@
 """Wiring between the media players a household has and the services around them.
 
-Two grafts, each onto an integration Home Assistant ships: Apple Music into the
-Sonos media browser, and Jellyfin onto the Apple TV by way of Infuse. Neither
-adds an entity. Both wrap the seams of the integration they extend, so the
-players a household already has gain a source rather than a duplicate that has
-to be kept in step with the real one.
+Three grafts, each onto an integration Home Assistant ships: Apple Music into
+the Sonos media browser, Jellyfin onto the Apple TV by way of Infuse, and the
+Apple TV app's real episode numbering onto the Apple TV entity. None adds an
+entity. All wrap the seams of the integration they extend, so the players a
+household already has gain a source rather than a duplicate that has to be kept
+in step with the real one.
 
-The two are independent: a household with only one of the players sets up
+They are independent: a household with only one of the players sets up
 normally, and a graft that cannot install leaves its integration untouched.
 
 One thing here is not a graft. Scrobbling Apple TV playback to SIMKL only reads
 states Home Assistant already publishes, so it patches nothing and hangs off the
-entry directly, and it runs only for a household that has linked SIMKL.
+entry directly, and it runs only for a household that has linked SIMKL. The
+numbering graft is what makes those states right for a show numbered in
+production blocks; without it the scrobbler falls back to the content id.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from .applemusic import patch as applemusic
 from .applemusic.api import AppleMusicClient, UserTokenInvalid
 from .applemusic.const import CONF_STOREFRONT, CONF_USER_TOKEN, DEFAULT_STOREFRONT
 from .applemusic.dev_token import DeveloperToken, TokenError
+from .appletv import patch as numbering
 from .const import DOMAIN
 from .data import RuntimeData
 from .infuse import patch as infuse
@@ -36,7 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Every graft is a module exposing NAME, async_install(hass) -> bool and
 # async_remove(). Adding one is adding it here; nothing below counts them.
-GRAFTS = (applemusic, infuse)
+GRAFTS = (applemusic, infuse, numbering)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -77,8 +81,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.async_on_unload(graft.async_remove)
 
     # Started before the readiness check below: it reads states Home Assistant
-    # already publishes and touches neither seam, so a household whose grafts
-    # both decline still has scrobbling to do.
+    # already publishes and touches no seam, so a household whose grafts all
+    # decline still has scrobbling to do.
     if (scrobbler := simkl.async_start(hass, entry)) is not None:
         runtime.scrobbler = scrobbler
         entry.async_on_unload(scrobbler.async_stop)
