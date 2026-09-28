@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import pathlib
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -14,11 +16,10 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
 )
 from soco.data_structures import DidlResource
 
-from custom_components.manifold.applemusic import patch as applemusic_patch
+from custom_components.manifold import GRAFTS
 from custom_components.manifold.applemusic.api import AppleMusicClient, Page
 from custom_components.manifold.applemusic.const import CONF_STOREFRONT, CONF_USER_TOKEN
 from custom_components.manifold.const import DOMAIN
-from custom_components.manifold.infuse import patch as infuse_patch
 
 USER_TOKEN = "A" * 40 + "=="
 STOREFRONT = "gb"
@@ -51,17 +52,38 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture(autouse=True)
 def no_leaked_grafts():
-    """Take both grafts back off after every test.
+    """Take every graft back off after every test.
 
-    Both replace attributes on modules and classes Home Assistant owns. A test
+    Each replaces attributes on modules and classes Home Assistant owns. A test
     that fails between installing and removing would otherwise leave a wrapper on
     the real thing for the rest of the session, and every later failure would be
-    a consequence of that one rather than its own fact. Both removals are no-ops
+    a consequence of that one rather than its own fact. Every removal is a no-op
     when nothing is installed.
     """
     yield
-    applemusic_patch.async_remove()
-    infuse_patch.async_remove()
+    for graft in GRAFTS:
+        graft.async_remove()
+
+
+@contextlib.contextmanager
+def no_grafts():
+    """Every graft declining to install, for a household with nothing to patch.
+
+    Patched by module rather than by name, so a graft added to `GRAFTS` is
+    declined here without a test changing.
+    """
+    with contextlib.ExitStack() as stack:
+        for graft in GRAFTS:
+            stack.enter_context(patch.object(graft, "async_install", return_value=False))
+        yield
+
+
+# 840 bytes from a television playing Slow Horses season 6, episode 2, whose
+# content id slices to season 3, episode 8: the case the numbering graft exists
+# for.
+SLOW_HORSES_ARCHIVE = (
+    pathlib.Path(__file__).parent / "fixtures" / "appletv_nowplaying_slow_horses_s6e2.bin"
+).read_bytes()
 
 
 @pytest.fixture(autouse=True)

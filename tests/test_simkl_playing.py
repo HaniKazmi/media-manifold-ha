@@ -29,8 +29,14 @@ def state(
     duration: int | None = 3600,
     position: int | None = None,
     updated: datetime | None = None,
+    season: str | None = None,
+    number: str | None = None,
 ):
-    """One media player state, carrying only what the television reports."""
+    """One media player state, carrying only what the television reports.
+
+    `season` and `number` are what the numbering graft writes, as the strings
+    Home Assistant carries them.
+    """
     attributes = {}
     for key, attribute in (
         ("app_id", app),
@@ -39,6 +45,8 @@ def state(
         ("media_duration", duration),
         ("media_position", position),
         ("media_position_updated_at", updated),
+        ("media_season", season),
+        ("media_episode", number),
     ):
         if attribute is not None:
             attributes[key] = attribute
@@ -46,7 +54,8 @@ def state(
 
 
 def test_the_content_id_carries_the_numbering() -> None:
-    """It is the only place it exists: pyatv reports no season or episode."""
+    """Without the graft's attributes it is the only place the numbering exists:
+    pyatv reports no season or episode for this app."""
     assert episode(state()) == Episode("Black Bird", 1, 4)
 
 
@@ -212,3 +221,40 @@ def test_arriving_at_paused_from_a_standstill_is_not_a_pause() -> None:
     """Nothing was playing, so nothing was paused."""
     idle = state("idle", content_id=None, title=None)
     assert events(idle, state("paused", position=1800, updated=NOW), NOW) == []
+
+
+def test_the_numbering_the_graft_wrote_is_preferred() -> None:
+    """Slow Horses season 6 arrives as A0006403008: the id counts production
+    blocks and the show is shot two seasons at a time, so the slice says season
+    3, episode 8, an episode SIMKL has no record of. The graft's attributes say
+    what the iOS Remote says."""
+    playing = state(content_id="A0006403008", title="Slow Horses", season="6", number="2")
+
+    assert episode(playing) == Episode("Slow Horses", 6, 2)
+
+
+@pytest.mark.parametrize(
+    ("season", "number"),
+    [("6", None), (None, "2"), ("six", "2")],
+    ids=["no episode", "no season", "not a number"],
+)
+def test_half_a_numbering_falls_back_to_the_id(season, number) -> None:
+    assert episode(state(season=season, number=number)) == Episode("Black Bird", 1, 4)
+
+
+def test_the_numbering_alone_is_not_enough_without_the_app() -> None:
+    """Infuse could report a season and an episode of its own; a Jellyfin
+    webhook already scrobbles that side."""
+    playing = state(app="com.firecore.infuse", season="6", number="2")
+
+    assert episode(playing) is None
+
+
+def test_the_numbering_alone_is_not_enough_without_the_id() -> None:
+    """The id is what marks the item as one of the app's own episodes, whose
+    title is the show. Something else the app plays could carry a season and
+    an episode beside a title naming an episode, and SIMKL would be searched
+    for that."""
+    playing = state(content_id=None, title="Daddy Issues", season="6", number="2")
+
+    assert episode(playing) is None

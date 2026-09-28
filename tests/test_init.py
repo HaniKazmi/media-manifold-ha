@@ -18,8 +18,9 @@ from custom_components.manifold.applemusic.dev_token import TokenError
 from custom_components.manifold.const import DOMAIN
 from custom_components.manifold.simkl.const import CONF_SIMKL_TOKEN
 
+from .conftest import no_grafts
+
 SONOS_GRAFT = "custom_components.manifold.applemusic.patch.async_install"
-INFUSE_GRAFT = "custom_components.manifold.infuse.patch.async_install"
 SIMKL_WATCH = "custom_components.manifold.simkl.watch.async_start"
 
 
@@ -102,10 +103,7 @@ async def test_nothing_to_graft_onto_waits_rather_than_failing(
 ) -> None:
     """A household with neither player is usually one that has not finished
     starting, and a retry costs nothing where a failure needs a restart."""
-    with (
-        patch(SONOS_GRAFT, return_value=False),
-        patch(INFUSE_GRAFT, return_value=False),
-    ):
+    with no_grafts():
         await setup(hass, config_entry)
 
     assert config_entry.state is ConfigEntryState.SETUP_RETRY
@@ -216,10 +214,7 @@ async def test_a_linked_household_scrobbles_even_when_no_graft_takes(
     hass.config_entries.async_update_entry(
         config_entry, data={**config_entry.data, CONF_SIMKL_TOKEN: "simkl-token"}
     )
-    with (
-        patch(SONOS_GRAFT, return_value=False),
-        patch(INFUSE_GRAFT, return_value=False),
-    ):
+    with no_grafts():
         await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
@@ -231,10 +226,7 @@ async def test_an_entry_with_nothing_to_do_waits(
     hass, config_entry, resolved_storefront
 ) -> None:
     """No graft and no SIMKL is a household that has not finished starting."""
-    with (
-        patch(SONOS_GRAFT, return_value=False),
-        patch(INFUSE_GRAFT, return_value=False),
-    ):
+    with no_grafts():
         await setup(hass, config_entry)
 
     assert config_entry.state is ConfigEntryState.SETUP_RETRY
