@@ -40,4 +40,4 @@ pytest-cov
 
 # Pinned so `ruff check` means the same thing run to run; its default rule set
 # moves between releases.
-ruff==0.16.3
+ruff==0.16.10
