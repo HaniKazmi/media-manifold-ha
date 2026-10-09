@@ -5,7 +5,7 @@
 #
 # The `latest` job in tests.yml installs this unpinned on a schedule, so
 # upstream breakage still surfaces on our timetable rather than mid-PR.
-pytest-homeassistant-custom-component==0.13.355
+pytest-homeassistant-custom-component==0.13.371
 
 # The Sonos integration's own requirements, plus those of the `ssdp` component
 # it depends on — importing homeassistant.components.sonos pulls the whole chain
