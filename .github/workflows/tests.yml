@@ -30,7 +30,7 @@ jobs:
           # pytest-homeassistant-custom-component requires >= 3.14. On 3.13 pip
           # resolves to an old release rather than failing, which pins the whole
           # suite to a Home Assistant six months behind.
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
           # The deps live in requirements_test.txt, which the default glob
           # doesn't match, and an unmatched path fails the step rather than
@@ -57,7 +57,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           cache: pip
           cache-dependency-path: requirements_test.txt
 
@@ -84,7 +84,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
 
       - name: Install the newest releases
         run: |
