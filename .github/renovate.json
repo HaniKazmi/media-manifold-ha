@@ -1,14 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "group:all"
   ],
   "timezone": "Europe/London",
   "schedule": [
     "* 0-6 * * 0"
   ],
   "description": [
-    "Weekly. pytest-homeassistant-custom-component follows Home Assistant's own release cadence and publishes several times a week, so a daily run raises the same upgrade repeatedly before anyone has looked at the first one.",
+    "One pull request a week. group:all puts every update, majors included, on a single branch, and the schedule runs it weekly because pytest-homeassistant-custom-component follows Home Assistant's own release cadence and publishes several times a week, so a daily run raises the same upgrade repeatedly before anyone has looked at the first one. A security fix still arrives on its own PR, off schedule.",
     "Nothing automerges. The suite does exercise the real Sonos and apple_tv modules, so a green run is genuine evidence for ruff and for the actions — but it is the same suite either side of a Home Assistant bump, and what that bump changes is the seam being tested, which is exactly what a passing run cannot speak to."
   ],
   "automerge": false,
@@ -33,15 +34,13 @@
       "enabled": false
     },
     {
-      "description": "This one pin is the Home Assistant upgrade: the package pulls Home Assistant in, so its version decides which core the grafts are patched onto and which apple_tv module the seams are read from. It gets its own pull request, never grouped, because the diff is one line and the review is the release notes of a different project.",
+      "description": "This one pin is the Home Assistant upgrade: the package pulls Home Assistant in, so its version decides which core the grafts are patched onto and which apple_tv module the seams are read from. It rides in the weekly pull request with everything else, but its diff is one line and its review is the release notes of a different project, so on that PR it is the line whose release notes want reading rather than its CI result trusting.",
       "matchManagers": [
         "pip_requirements"
       ],
       "matchPackageNames": [
         "pytest-homeassistant-custom-component"
-      ],
-      "groupName": null,
-      "separateMinorPatch": true
+      ]
     },
     {
       "description": "ruff is pinned so that `ruff check` means the same thing run to run; its default rule set moves between releases. An upgrade that fails CI is a rule set that changed, which is the thing worth knowing.",
@@ -50,14 +49,7 @@
       ],
       "matchPackageNames": [
         "ruff"
-      ],
-      "groupName": "ruff"
-    },
-    {
-      "matchManagers": [
-        "github-actions"
-      ],
-      "groupName": "github actions"
+      ]
     }
   ],
   "configMigration": true
