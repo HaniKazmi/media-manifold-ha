@@ -89,10 +89,19 @@ jobs:
       - name: Install the newest releases
         run: |
           python -m pip install --upgrade pip
-          pip install pytest-homeassistant-custom-component pytest-cov soco sonos-websocket
+          pip install pytest-homeassistant-custom-component pytest-cov
+
+      - name: Install the requirements that Home Assistant pins
+        # At that release's pins rather than each package's newest: the newest
+        # soco is not what a speaker on this Home Assistant receives bytes from.
+        # Written to a file so a failing script fails the step, which a pipe
+        # into pip would swallow.
+        run: |
+          python .github/scripts/ha_requirements.py > "$RUNNER_TEMP/ha-requirements.txt"
+          pip install -r "$RUNNER_TEMP/ha-requirements.txt"
 
       - name: Report the versions under test
-        run: pip show homeassistant pytest-homeassistant-custom-component soco | grep -E '^(Name|Version)'
+        run: pip show homeassistant pytest-homeassistant-custom-component soco pyatv | grep -E '^(Name|Version)'
 
       - name: Run tests
         run: pytest
