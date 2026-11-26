@@ -27,9 +27,14 @@ declines.
 
 ## Installing
 
-Add this repository to HACS as a custom repository of type *Integration*,
-install it, and restart Home Assistant. Then add it from Settings → Devices &
-Services.
+On Home Assistant 2026.11 or newer, open Settings → Marketplace, choose *Add
+from link* from the menu in the top right, and enter
+`HaniKazmi/media-manifold-ha`. Adding a repository by link asks you to connect
+GitHub first. Installing it goes straight into setup, with no restart.
+
+On 2026.10 or older, add this repository to HACS as a custom repository of type
+*Integration*, install it, and restart Home Assistant. Then add it from Settings
+→ Devices & Services.
 
 Setup asks about Apple Music only. The Apple TV side needs no configuration at
 all: the Jellyfin credentials come from the core `jellyfin` integration's own
